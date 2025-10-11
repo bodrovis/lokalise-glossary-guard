@@ -11,13 +11,13 @@ It helps catch common formatting issues early (wrong separators, missing headers
 
 ```
 # Validate a single file
-glossary-guard validate --file glossary.csv
+lokalise-glossary-guard validate --file glossary.csv
 
 # Validate multiple files
-glossary-guard validate -f glossary1.csv -f glossary2.csv
+lokalise-glossary-guard validate -f glossary1.csv -f glossary2.csv
 
 # Validate with explicit language codes
-glossary-guard validate -f glossary.csv -l en -l de_DE -l fr
+lokalise-glossary-guard validate -f glossary.csv -l en -l de_DE -l fr
 ```
 
 Example output:
