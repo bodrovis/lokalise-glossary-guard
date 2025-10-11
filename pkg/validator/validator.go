@@ -3,8 +3,9 @@ package validator
 import (
 	"errors"
 	"fmt"
-	"io/fs"
-	"os"
+	"runtime/debug"
+	"sort"
+	"sync"
 
 	"github.com/bodrovis/lokalise-glossary-guard/internal/checks"
 )
@@ -22,63 +23,64 @@ type Summary struct {
 	EarlyStatus checks.Status
 }
 
-func safeRun(c checks.Check, filePath string) (res checks.Result) {
-	defer func() {
-		if r := recover(); r != nil {
-			res.Status = checks.Error
-			res.Message = fmt.Sprintf("check panicked: %v", r)
-		}
-	}()
-	return c.Run(filePath)
-}
+func Validate(data []byte, filePath string, langs []string) (Summary, error) {
+	criticalChecks, normalChecks := checks.Split()
 
-func Validate(filePath string) (Summary, error) {
-	if err := ValidateFilePath(filePath); err != nil {
-		return Summary{}, err
-	}
-
-	ordered := checks.Sorted()
-	if len(ordered) == 0 {
+	total := len(criticalChecks) + len(normalChecks)
+	if total == 0 {
 		return Summary{FilePath: filePath, Results: nil}, nil
 	}
 
 	sum := Summary{
 		FilePath: filePath,
-		Results:  make([]checks.Result, 0, len(ordered)),
+		Results:  make([]checks.Result, 0, total),
 	}
 
-	for _, c := range ordered {
-		res := safeRun(c, filePath)
-		sum.Results = append(sum.Results, res)
+	for _, c := range criticalChecks {
+		r := safeRun(c, data, filePath, langs)
 
-		switch res.Status {
-		case checks.Pass:
-			sum.Pass++
-		case checks.Fail:
-			sum.Fail++
-			if c.FailFast() {
-				sum.EarlyExit = true
-				sum.EarlyCheck = c.Name()
-				sum.EarlyStatus = res.Status
-				return sum, ErrValidationFailed
-			}
-		case checks.Error:
-			sum.Error++
-			if c.FailFast() {
-				sum.EarlyExit = true
-				sum.EarlyCheck = c.Name()
-				sum.EarlyStatus = res.Status
-				return sum, ErrValidationFailed
-			}
-		default:
-			sum.Error++
-			if c.FailFast() {
-				sum.EarlyExit = true
-				sum.EarlyCheck = c.Name()
-				sum.EarlyStatus = res.Status
-				return sum, ErrValidationFailed
-			}
+		sum.Results = append(sum.Results, r)
+
+		tally(&sum, r)
+
+		if r.Status != checks.Pass {
+			sum.EarlyExit = true
+			sum.EarlyCheck = c.Name()
+			sum.EarlyStatus = r.Status
+			return sum, ErrValidationFailed
 		}
+	}
+
+	if len(normalChecks) > 0 {
+		resCh := make(chan checks.Result, len(normalChecks))
+		var wg sync.WaitGroup
+
+		for _, c := range normalChecks {
+			wg.Add(1)
+			go func(c checks.Check) {
+				defer wg.Done()
+				resCh <- safeRun(c, data, filePath, langs)
+			}(c)
+		}
+
+		wg.Wait()
+		close(resCh)
+
+		for r := range resCh {
+			sum.Results = append(sum.Results, r)
+			tally(&sum, r)
+		}
+
+		normStart := len(criticalChecks)
+		normSlice := sum.Results[normStart:]
+		sort.SliceStable(normSlice, func(i, j int) bool {
+			ni, nj := normSlice[i], normSlice[j]
+			if ni.Name != nj.Name {
+				return ni.Name < nj.Name
+			}
+
+			return ni.Status < nj.Status
+		})
 	}
 
 	if sum.Fail > 0 || sum.Error > 0 {
@@ -87,31 +89,32 @@ func Validate(filePath string) (Summary, error) {
 	return sum, nil
 }
 
-func ValidateFilePath(fp string) error {
-	if fp == "" {
-		return fmt.Errorf("file path is required")
-	}
-	info, err := os.Stat(fp)
-	if err != nil {
-		switch {
-		case errors.Is(err, fs.ErrNotExist):
-			return fmt.Errorf("file not found: %s", fp)
-		case errors.Is(err, fs.ErrPermission):
-			return fmt.Errorf("permission denied: %s", fp)
-		default:
-			return fmt.Errorf("file not accessible: %w", err)
+func safeRun(c checks.Check, data []byte, path string, langs []string) (out checks.Result) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			out = checks.Result{
+				Name:    c.Name(),
+				Status:  checks.Error,
+				Message: fmt.Sprintf("panic: %v\n%s", rec, debug.Stack()),
+			}
 		}
+	}()
+	r := c.Run(data, path, langs)
+	if r.Name == "" {
+		r.Name = c.Name()
 	}
-	if info.IsDir() {
-		return fmt.Errorf("path points to a directory: %s", fp)
+	return r
+}
+
+func tally(sum *Summary, r checks.Result) {
+	switch r.Status {
+	case checks.Pass:
+		sum.Pass++
+	case checks.Fail:
+		sum.Fail++
+	case checks.Error:
+		sum.Error++
+	default:
+		sum.Error++
 	}
-	f, err := os.Open(fp)
-	if err != nil {
-		if errors.Is(err, fs.ErrPermission) {
-			return fmt.Errorf("permission denied: %s", fp)
-		}
-		return fmt.Errorf("file is not readable: %w", err)
-	}
-	_ = f.Close()
-	return nil
 }

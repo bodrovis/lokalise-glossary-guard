@@ -1,7 +1,9 @@
+// checks_test.go
 package checks
 
 import (
 	"reflect"
+	"sort"
 	"testing"
 )
 
@@ -13,99 +15,138 @@ type mockCheck struct {
 	r  Result
 }
 
-func (m mockCheck) Name() string        { return m.n }
-func (m mockCheck) Run(_ string) Result { return m.r }
-func (m mockCheck) FailFast() bool      { return m.ff }
-func (m mockCheck) Priority() int       { return m.p }
+func (m mockCheck) Name() string { return m.n }
+func (m mockCheck) Run(_ []byte, _ string, _ []string) Result {
+	if (m.r == Result{}) {
+		return Passf(m.n, "ok")
+	}
+	return m.r
+}
+func (m mockCheck) FailFast() bool { return m.ff }
+func (m mockCheck) Priority() int  { return m.p }
 
-func TestSorted_EmptyRegistry(t *testing.T) {
+func names(xs []Check) []string {
+	out := make([]string, len(xs))
+	for i, c := range xs {
+		out[i] = c.Name()
+	}
+	return out
+}
+
+func TestSplit_EmptyRegistry(t *testing.T) {
 	Reset()
-	got := Sorted()
-	if len(got) != 0 {
-		t.Fatalf("expected empty slice, got %d", len(got))
+	crit, norm := Split()
+	if len(crit) != 0 || len(norm) != 0 {
+		t.Fatalf("expected both slices empty, got crit=%d norm=%d", len(crit), len(norm))
 	}
 }
 
-func TestRegisterAndSorted_ByPriorityThenName(t *testing.T) {
+func TestRegisterAndReplaceByName(t *testing.T) {
 	Reset()
 
-	// Register in a messy order
-	Register(mockCheck{n: "b", p: 1})
-	Register(mockCheck{n: "c", p: 2})
+	// Register initial check
+	Register(mockCheck{n: "dup", p: 10, ff: false})
+	if len(All) != 1 {
+		t.Fatalf("expected All to have 1 entry, got %d", len(All))
+	}
+
+	// Register with the same name should replace the previous one (not append)
+	Register(mockCheck{n: "dup", p: 99, ff: true})
+	if len(All) != 1 {
+		t.Fatalf("expected replacement (len=1), got len=%d", len(All))
+	}
+
+	got := All[0].(mockCheck)
+	if got.p != 99 || got.ff != true {
+		t.Fatalf("replacement failed: got=%+v", got)
+	}
+}
+
+func TestSplit_SortsCriticalByPriorityThenName(t *testing.T) {
+	Reset()
+
+	// Messy registration order
+	Register(mockCheck{n: "z", p: 2, ff: true})
+	Register(mockCheck{n: "a", p: 1, ff: true})
+	Register(mockCheck{n: "b", p: 1, ff: true})
+	Register(mockCheck{n: "m", p: 5, ff: true})
+
+	crit, norm := Split()
+	if len(norm) != 0 {
+		t.Fatalf("expected no normal checks, got %d", len(norm))
+	}
+	if len(crit) != 4 {
+		t.Fatalf("expected 4 critical checks, got %d", len(crit))
+	}
+
+	got := names(crit)
+	want := []string{"a", "b", "z", "m"} // p:1 (a,b) by name, then p:2 (z), then p:5 (m)
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("critical order mismatch\n got: %v\nwant: %v", got, want)
+	}
+}
+
+func TestSplit_SplitsCriticalAndNormal(t *testing.T) {
+	Reset()
+
+	// Two critical, two normal
+	Register(mockCheck{n: "crit-2", p: 2, ff: true})
+	Register(mockCheck{n: "norm-x", p: 7, ff: false})
+	Register(mockCheck{n: "crit-1", p: 1, ff: true})
+	Register(mockCheck{n: "norm-y", p: 3, ff: false})
+
+	crit, norm := Split()
+
+	// Critical sorted by (priority, name)
+	gotCrit := names(crit)
+	wantCrit := []string{"crit-1", "crit-2"}
+	if !reflect.DeepEqual(gotCrit, wantCrit) {
+		t.Fatalf("critical order mismatch\n got: %v\nwant: %v", gotCrit, wantCrit)
+	}
+
+	// Normal: not guaranteed to be sorted by Split(); verify set equality
+	gotNorm := names(norm)
+	sort.Strings(gotNorm)
+	wantNorm := []string{"norm-x", "norm-y"}
+	if !reflect.DeepEqual(gotNorm, wantNorm) {
+		t.Fatalf("normal membership mismatch\n got: %v\nwant: %v", gotNorm, wantNorm)
+	}
+}
+
+func TestSplit_ReturnsCopies_NotAliases(t *testing.T) {
+	Reset()
 	Register(mockCheck{n: "a", p: 1})
+	Register(mockCheck{n: "b", p: 2})
 
-	got := Sorted()
+	crit, norm := Split()
 
-	names := []string{got[0].Name(), got[1].Name(), got[2].Name()}
-	want := []string{"a", "b", "c"} // p:1 (a,b) by name, then p:2 (c)
-	if !reflect.DeepEqual(names, want) {
-		t.Fatalf("order mismatch\n got: %v\nwant: %v", names, want)
+	// Mutate the returned slices; global registry must not be affected
+	if len(crit) > 0 {
+		crit[0] = mockCheck{n: "MUTATED", p: 999}
+	}
+	if len(norm) > 0 {
+		norm[0] = mockCheck{n: "MUTATED2", p: 999}
+	}
+
+	// Re-split and ensure names are unchanged
+	crit2, norm2 := Split()
+	got := append(names(crit2), names(norm2)...)
+	want := []string{"a", "b"} // order across crit/norm is not important here
+	sort.Strings(got)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("registry was mutated via Split copies: got=%v want=%v", got, want)
 	}
 }
 
-func TestSorted_IsCopyNotAlias(t *testing.T) {
+func TestReset_ClearsRegistry(t *testing.T) {
 	Reset()
-
 	Register(mockCheck{n: "x", p: 1})
-	Register(mockCheck{n: "y", p: 2})
-
-	sorted := Sorted()
-	if len(sorted) != len(All) {
-		t.Fatalf("length mismatch: sorted=%d all=%d", len(sorted), len(All))
+	if len(All) != 1 {
+		t.Fatalf("unexpected length before reset: %d", len(All))
 	}
-
-	// mutate the sorted slice element; All should be unaffected
-	sorted[0] = mockCheck{n: "MUTATED", p: 0}
-
-	if All[0].Name() == "MUTATED" {
-		t.Fatalf("Sorted must return a copy; mutation leaked into All")
-	}
-}
-
-func TestSorted_StableWhenNameAndPriorityEqual(t *testing.T) {
 	Reset()
-
-	// Two checks with the same priority and same name to verify stable sort
-	first := mockCheck{n: "dup", p: 10}
-	second := mockCheck{n: "dup", p: 10}
-
-	Register(first)
-	Register(second)
-
-	got := Sorted()
-	if len(got) != 2 {
-		t.Fatalf("expected 2 checks, got %d", len(got))
-	}
-
-	// Because the comparator treats them equal, SliceStable must preserve registration order.
-	if got[0].Name() != "dup" || got[1].Name() != "dup" {
-		t.Fatalf("unexpected names: %s, %s", got[0].Name(), got[1].Name())
-	}
-
-	// reflect the exact order by comparing pointer identity after type assertion
-	g0, ok0 := got[0].(mockCheck)
-	g1, ok1 := got[1].(mockCheck)
-	if !ok0 || !ok1 {
-		t.Fatalf("type assertion to mockCheck failed")
-	}
-	if !reflect.DeepEqual(g0, first) || !reflect.DeepEqual(g1, second) {
-		t.Fatalf("stable order violated: got (%v, %v), want (%v, %v)", g0, g1, first, second)
-	}
-}
-
-func TestSorted_SecondaryKeyName(t *testing.T) {
-	Reset()
-
-	// Same priority, different names → sorted lexicographically by Name()
-	Register(mockCheck{n: "zeta", p: 5})
-	Register(mockCheck{n: "alpha", p: 5})
-	Register(mockCheck{n: "gamma", p: 5})
-
-	got := Sorted()
-	names := []string{got[0].Name(), got[1].Name(), got[2].Name()}
-	want := []string{"alpha", "gamma", "zeta"}
-
-	if !reflect.DeepEqual(names, want) {
-		t.Fatalf("secondary sort by name failed\n got: %v\nwant: %v", names, want)
+	if len(All) != 0 {
+		t.Fatalf("reset did not clear registry; len=%d", len(All))
 	}
 }

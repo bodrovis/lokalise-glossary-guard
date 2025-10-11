@@ -1,72 +1,77 @@
 package checks
 
 import (
+	"bytes"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 )
 
 type ensureNonEmptyTerm struct{}
 
-func (ensureNonEmptyTerm) Name() string   { return "ensure-non-empty-term" }
+const ensNonEmptyTermsName = "ensure-non-empty-term"
+
+func (ensureNonEmptyTerm) Name() string   { return ensNonEmptyTermsName }
 func (ensureNonEmptyTerm) FailFast() bool { return false }
-func (ensureNonEmptyTerm) Priority() int  { return 4 }
+func (ensureNonEmptyTerm) Priority() int  { return 100 }
 
-func (ensureNonEmptyTerm) Run(filePath string) Result {
-	f, err := os.Open(filePath)
-	if err != nil {
-		return Result{Name: "ensure-non-empty-term", Status: Error, Message: fmt.Sprintf("cannot open file: %v", err)}
+func (ensureNonEmptyTerm) Run(data []byte, _filePath string, _langs []string) Result {
+	if len(data) == 0 {
+		return Result{Name: ensNonEmptyTermsName, Status: Fail, Message: "Empty file: cannot validate terms"}
 	}
-	defer func() {
-		if cerr := f.Close(); cerr != nil {
-			fmt.Fprintf(os.Stderr, "warning: failed to close %s: %v\n", filePath, cerr)
-		}
-	}()
 
-	r := csv.NewReader(f)
+	r := csv.NewReader(bytes.NewReader(data))
 	r.Comma = ';'
 	r.FieldsPerRecord = -1
 	r.TrimLeadingSpace = true
 
-	// читаем хедер
 	header, err := r.Read()
 	if err != nil {
-		return Result{Name: "ensure-non-empty-term", Status: Error, Message: fmt.Sprintf("cannot read header: %v", err)}
+		if errors.Is(err, io.EOF) {
+			return Result{Name: ensNonEmptyTermsName, Status: Fail, Message: "File has no header or data"}
+		}
+		return Result{Name: ensNonEmptyTermsName, Status: Error, Message: fmt.Sprintf("cannot read header: %v", err)}
 	}
 
 	termIdx := -1
 	for i, h := range header {
-		if strings.EqualFold(strings.TrimSpace(h), "term") {
+		hh := strings.ToLower(strings.TrimSpace(h))
+		if i == 0 {
+			hh = strings.TrimPrefix(hh, "\uFEFF") // remove BOM
+		}
+		if hh == "term" {
 			termIdx = i
 			break
 		}
 	}
+
 	if termIdx == -1 {
-		return Result{Name: "ensure-non-empty-term", Status: Error, Message: "header does not contain 'term' column"}
+		return Result{Name: ensNonEmptyTermsName, Status: Error, Message: "Header does not contain 'term' column"}
 	}
 
-	line := 1
+	lineNum := 1
 	for {
 		rec, err := r.Read()
 		if err == io.EOF {
 			break
 		}
-		line++
+
+		lineNum++
 		if err != nil {
-			return Result{Name: "ensure-non-empty-term", Status: Error, Message: fmt.Sprintf("csv parse error: %v", err)}
+			return Result{Name: ensNonEmptyTermsName, Status: Error, Message: fmt.Sprintf("CSV parse error at line %d: %v", lineNum, err)}
 		}
 		if len(rec) <= termIdx {
 			continue
 		}
-		term := strings.TrimSpace(rec[termIdx])
-		if term == "" {
-			return Result{Name: "ensure-non-empty-term", Status: Fail, Message: fmt.Sprintf("term value is required (blank found at line %d)", line)}
+
+		if strings.TrimSpace(rec[termIdx]) == "" {
+			return Result{Name: ensNonEmptyTermsName, Status: Fail, Message: fmt.Sprintf("Term value is required (blank found at line %d)", lineNum)}
 		}
 	}
 
-	return Result{Name: "ensure-non-empty-term", Status: Pass, Message: "All term values are present"}
+	return Result{Name: ensNonEmptyTermsName, Status: Pass, Message: "All 'term' values are non-empty"}
 }
 
 func init() { Register(ensureNonEmptyTerm{}) }

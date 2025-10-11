@@ -1,0 +1,87 @@
+version: 2
+
+project_name: lokalise-glossary-guard
+
+before:
+  hooks:
+    - go mod tidy
+
+# Основная сборка CLI
+builds:
+  - id: cli
+    main: .
+    binary: lokalise-glossary-guard
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - "-s -w -X github.com/bodrovis/lokalise-glossary-guard/cmd.version={{.Version}}"
+    goos:
+      - linux
+      - windows
+      - darwin
+      - freebsd
+    goarch:
+      - amd64
+      - arm64
+      - arm
+      - '386'
+    goarm:
+      - '6'
+      - '7'
+    ignore:
+      - goos: darwin
+        goarch: '386'
+      - goos: darwin
+        goarch: arm
+      - goos: windows
+        goarch: arm
+
+  - id: wasm
+    main: .
+    binary: lokalise-glossary-guard
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - js
+    goarch:
+      - wasm
+
+upx:
+  - enabled: true
+    compress: best
+    lzma: true
+    brute: true
+    goos:
+      - linux
+      - windows
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: 'checksums.txt'
+
+release:
+  draft: false
+  prerelease: false
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
