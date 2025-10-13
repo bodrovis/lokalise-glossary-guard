@@ -43,12 +43,12 @@ func TestEnsureKnownHeadersWithLangs_Pass_NoLangs_OnlyFixedAllowed(t *testing.T)
 	}
 }
 
-func TestEnsureKnownHeadersWithLangs_Fail_NoLangs_ButLanguageLikeColumns(t *testing.T) {
+func TestEnsureKnownHeadersWithLangs_Warn_NoLangs_ButLanguageLikeColumns(t *testing.T) {
 	c := ensureKnownHeadersWithLangs{}
 	content := "term;description;en;fr_description\n" +
 		"t;d;hello;bonjour\n"
 	res := c.Run([]byte(content), "", nil)
-	if res.Status != Fail || !containsLower(res.Message, "language-like column(s)") {
+	if res.Status != Warn || !containsLower(res.Message, "language-like column(s)") {
 		t.Fatalf("Status=%s msg=%q", res.Status, res.Message)
 	}
 	if !containsLower(res.Message, "en") || !containsLower(res.Message, "fr_description") {

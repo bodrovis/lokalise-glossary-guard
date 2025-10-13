@@ -149,7 +149,7 @@ func (ensureKnownHeadersWithLangs) Run(data []byte, _ string, langs []string) Re
 	if len(looksLikeLang) > 0 {
 		return Result{
 			Name:   ensKnownHdrsName,
-			Status: Fail,
+			Status: Warn,
 			Message: fmt.Sprintf(
 				"header contains language-like column(s) but no languages were provided: %s. Pass languages (e.g. --langs en,fr,de) or remove unsupported columns.",
 				strings.Join(looksLikeLang, ", "),
