@@ -22,8 +22,14 @@ var (
 	files       []string
 	langs       []string
 	maxParallel uint
-	noColor     bool
 	jsonOut     bool
+	noColor     bool
+
+	clrReset  = "\x1b[0m"
+	clrRed    = "\x1b[31m"
+	clrGreen  = "\x1b[32m"
+	clrYellow = "\x1b[33m"
+	clrCyan   = "\x1b[36m"
 )
 
 type fileOutcome struct {
@@ -31,6 +37,7 @@ type fileOutcome struct {
 	Path       string             `json:"path"`
 	Output     string             `json:"-"`
 	Passed     int                `json:"passed"`
+	Warned     int                `json:"warned"`
 	Failed     int                `json:"failed"`
 	Errored    int                `json:"errored"`
 	HadOpErr   bool               `json:"had_op_err"`
@@ -38,41 +45,9 @@ type fileOutcome struct {
 	Summary    *validator.Summary `json:"summary,omitempty"`
 }
 
-var (
-	clrReset = "\x1b[0m"
-	clrRed   = "\x1b[31m"
-	clrGreen = "\x1b[32m"
-	clrCyan  = "\x1b[36m"
-)
-
-func green(s string) string {
-	if noColor {
-		return s
-	}
-	return clrGreen + s + clrReset
-}
-
-func red(s string) string {
-	if noColor {
-		return s
-	}
-	return clrRed + s + clrReset
-}
-
-func cyan(s string) string {
-	if noColor {
-		return s
-	}
-	return clrCyan + s + clrReset
-}
-
-func colorStatus(s string) string {
-	switch s {
-	case "PASS":
-		return green(s)
-	default: // FAIL, ERROR, unknown
-		return red(s)
-	}
+type job struct {
+	idx  int
+	path string
 }
 
 var validateCmd = &cobra.Command{
@@ -85,7 +60,7 @@ language declarations, boolean flags, and term consistency. It can detect
 malformed headers, unknown or missing language codes, duplicate entries, or
 non-UTF8 input.
 
-Each file is analyzed independently and reported with PASS / FAIL / ERROR status.
+Each file is analyzed independently and reported with PASS / WARN / FAIL / ERROR status.
 
 Examples:
   # Validate a single glossary file
@@ -110,7 +85,7 @@ By default, all built-in checks are executed:
 `,
 	PreRunE: func(cmd *cobra.Command, args []string) error {
 		if len(files) == 0 {
-			return fmt.Errorf("no files provided — use --files to specify one or more CSV files")
+			return fmt.Errorf("no files provided; use --files to specify one or more CSV files")
 		}
 
 		if !noColor && os.Getenv("NO_COLOR") != "" {
@@ -126,6 +101,7 @@ By default, all built-in checks are executed:
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		start := time.Now()
+
 		if len(checks.All) == 0 {
 			fmt.Fprintln(os.Stderr, red("No checks registered. Nothing to run."))
 			return fmt.Errorf("no checks to run")
@@ -146,11 +122,6 @@ By default, all built-in checks are executed:
 
 		sep := strings.Repeat("─", 72)
 
-		type job struct {
-			idx  int
-			path string
-		}
-
 		jobs := make(chan job)
 		outcomes := make([]fileOutcome, len(files))
 
@@ -161,9 +132,7 @@ By default, all built-in checks are executed:
 		}
 
 		workers := min(int(maxParallel), len(files))
-		if workers < 1 {
-			workers = 1
-		}
+		workers = max(1, workers)
 
 		wg.Add(workers)
 
@@ -191,13 +160,21 @@ By default, all built-in checks are executed:
 }
 
 func Init(root *cobra.Command) {
-	validateCmd.Flags().StringSliceVarP(&files, "files", "f", nil, "Path(s) to glossary file(s) to validate (comma-separated or repeatable, supports globs)")
+	validateCmd.Flags().StringSliceVarP(
+		&files,
+		"files",
+		"f",
+		nil,
+		"Path(s) to glossary file(s) to validate (comma-separated or repeatable, supports globs)",
+	)
+
 	validateCmd.Flags().UintVar(
 		&maxParallel,
 		"parallel",
 		uint(runtime.GOMAXPROCS(0)),
 		"Maximum number of files to validate in parallel",
 	)
+
 	validateCmd.Flags().StringSliceVarP(
 		&langs,
 		"langs",
@@ -205,7 +182,9 @@ func Init(root *cobra.Command) {
 		nil,
 		"Language codes to expect in the header (e.g. en,fr,de or de_DE,pt-BR)",
 	)
+
 	validateCmd.Flags().BoolVar(&noColor, "no-color", false, "Disable colored output (also honored if NO_COLOR is set)")
+
 	validateCmd.Flags().BoolVar(&jsonOut, "json", false, "Output results as JSON (machine-readable)")
 
 	root.AddCommand(validateCmd)
@@ -215,17 +194,21 @@ func preprocessLangs(ls []string) []string {
 	if len(ls) == 0 {
 		return nil
 	}
+
 	seen := make(map[string]struct{}, len(ls))
 	var out []string
+
 	for _, v := range ls {
-		for _, part := range strings.Split(v, ",") {
+		for part := range strings.SplitSeq(v, ",") {
 			s := strings.TrimSpace(part)
 			if s == "" {
 				continue
 			}
+
 			if _, ok := seen[s]; ok {
 				continue
 			}
+
 			seen[s] = struct{}{}
 			out = append(out, s)
 		}
@@ -238,13 +221,14 @@ func preprocessLangs(ls []string) []string {
 func expandFiles(fs []string) ([]string, error) {
 	seen := map[string]struct{}{}
 	var out []string
+
 	for _, f := range fs {
-		parts := strings.Split(f, ",")
-		for _, p := range parts {
+		for p := range strings.SplitSeq(f, ",") {
 			p = strings.TrimSpace(p)
 			if p == "" {
 				continue
 			}
+
 			if hasGlob(p) {
 				matches, err := filepath.Glob(p)
 				if err != nil {
@@ -261,6 +245,7 @@ func expandFiles(fs []string) ([]string, error) {
 				}
 				continue
 			}
+
 			if _, ok := seen[p]; ok {
 				continue
 			}
@@ -272,7 +257,6 @@ func expandFiles(fs []string) ([]string, error) {
 	if len(out) == 0 {
 		return nil, fmt.Errorf("no files matched the provided patterns")
 	}
-
 	return out, nil
 }
 
@@ -308,6 +292,8 @@ func finalize(outcomes []fileOutcome, filesCount int, start time.Time) error {
 }
 
 func printAndAggregate(outcomes []fileOutcome, filesCount int, start time.Time) (hadOpErr, hadValFail bool, filesPassed, filesFailed, filesErrored int) {
+	var totalWarns int
+
 	for _, oc := range outcomes {
 		if oc.Output != "" {
 			fmt.Print(oc.Output)
@@ -315,14 +301,16 @@ func printAndAggregate(outcomes []fileOutcome, filesCount int, start time.Time) 
 		filesPassed += oc.Passed
 		filesFailed += oc.Failed
 		filesErrored += oc.Errored
+		totalWarns += oc.Summary.Warn
 		hadOpErr = hadOpErr || oc.HadOpErr
 		hadValFail = hadValFail || oc.HadValFail
 	}
 
 	if filesCount > 1 {
 		fmt.Println()
-		fmt.Printf("Overall: %s passed, %s failed, %s error(s)\n",
+		fmt.Printf("Overall: %s passed, %s warning(s), %s failed, %s error(s)\n",
 			green(fmt.Sprint(filesPassed)),
+			yellow(fmt.Sprint(totalWarns)),
 			red(fmt.Sprint(filesFailed)),
 			red(fmt.Sprint(filesErrored)),
 		)
@@ -385,9 +373,10 @@ func runOneFile(i int, path string, critFlags map[string]bool, langs []string, s
 			tag, r.Name, colorStatus(string(r.Status)), r.Message)
 	}
 
-	fmt.Fprintf(&b, "\nSummary for %s: %s passed, %s failed, %s errors\n",
+	fmt.Fprintf(&b, "\nSummary for %s: %s passed, %s warning(s), %s failed, %s errors\n",
 		path,
 		green(fmt.Sprint(sum.Pass)),
+		yellow(fmt.Sprint(sum.Warn)),
 		red(fmt.Sprint(sum.Fail)),
 		red(fmt.Sprint(sum.Error)),
 	)
@@ -408,11 +397,55 @@ func runOneFile(i int, path string, critFlags map[string]bool, langs []string, s
 		oc.Failed++
 		oc.HadValFail = true
 	} else {
-		fmt.Fprintln(&b, green("Result: PASSED"))
-		oc.Passed++
+		if sum.Warn > 0 {
+			fmt.Fprintln(&b, yellow("Result: PASSED WITH WARNINGS"))
+			oc.Warned++
+		} else {
+			fmt.Fprintln(&b, green("Result: PASSED"))
+			oc.Passed++
+		}
 	}
 
 	fmt.Fprintf(&b, "%s\n", sep)
 	oc.Output = b.String()
 	return oc
+}
+
+func green(s string) string {
+	if noColor {
+		return s
+	}
+	return clrGreen + s + clrReset
+}
+
+func red(s string) string {
+	if noColor {
+		return s
+	}
+	return clrRed + s + clrReset
+}
+
+func cyan(s string) string {
+	if noColor {
+		return s
+	}
+	return clrCyan + s + clrReset
+}
+
+func yellow(s string) string {
+	if noColor {
+		return s
+	}
+	return clrYellow + s + clrReset
+}
+
+func colorStatus(s string) string {
+	switch s {
+	case "PASS":
+		return green(s)
+	case "WARN":
+		return yellow(s)
+	default: // FAIL, ERROR, unknown
+		return red(s)
+	}
 }

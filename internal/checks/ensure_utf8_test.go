@@ -1,4 +1,3 @@
-// ensure_utf8_test.go
 package checks
 
 import "testing"

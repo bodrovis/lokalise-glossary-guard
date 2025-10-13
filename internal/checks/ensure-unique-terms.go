@@ -115,10 +115,10 @@ func (ensureUniqueTermsCS) Run(data []byte, _ string, _ []string) Result {
 		}
 
 		if more > 0 {
-			fmt.Fprintf(&b, "  …and %d more", more)
+			fmt.Fprintf(&b, "  ...and %d more", more)
 		}
 
-		return Result{Name: ensUniqTermsName, Status: Fail, Message: b.String()}
+		return Result{Name: ensUniqTermsName, Status: Warn, Message: b.String()}
 	}
 
 	return Result{Name: ensUniqTermsName, Status: Pass, Message: "All terms are unique (case-sensitive)"}

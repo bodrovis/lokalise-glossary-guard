@@ -6,7 +6,6 @@ before:
   hooks:
     - go mod tidy
 
-# Основная сборка CLI
 builds:
   - id: cli
     main: .

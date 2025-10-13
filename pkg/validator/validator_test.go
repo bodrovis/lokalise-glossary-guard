@@ -1,9 +1,9 @@
-// validator_test.go
 package validator
 
 import (
 	"errors"
 	"reflect"
+	"slices"
 	"sort"
 	"testing"
 
@@ -30,21 +30,18 @@ func (m mockCheck) Run(_data []byte, _path string, langs []string) checks.Result
 	if m.panicOnRun {
 		panic("kaboom")
 	}
+
 	if m.expectLang != "" {
-		found := false
-		for _, l := range langs {
-			if l == m.expectLang {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(langs, m.expectLang)
 		if !found {
 			return checks.Failf(m.name, "missing expected lang %q", m.expectLang)
 		}
 	}
+
 	if (m.result == checks.Result{}) {
 		return checks.Passf(m.name, "ok")
 	}
+
 	// ensure Name is set for realism
 	if m.result.Name == "" {
 		mr := m.result
@@ -286,5 +283,80 @@ func TestValidate_LangsArePassedThrough(t *testing.T) {
 	}
 	if sum.Fail != 0 || sum.Error != 0 {
 		t.Fatalf("unexpected summary with langs: %+v", sum)
+	}
+}
+
+func TestValidate_CriticalWarnDoesNotStopEarly(t *testing.T) {
+	checks.Reset()
+
+	checks.Register(mockCheck{
+		name:     "crit-warn",
+		priority: 1,
+		failFast: true,
+		result:   checks.Result{Status: checks.Warn, Message: "heads-up"},
+	})
+
+	checks.Register(mockCheck{
+		name:     "norm-pass",
+		priority: 2,
+		failFast: false,
+		result:   checks.Result{Status: checks.Pass, Message: "ok"},
+	})
+
+	sum, err := Validate(dataFixture(), "file.csv", nil)
+	if err != nil {
+		t.Fatalf("unexpected error (WARN must not fail): %v", err)
+	}
+
+	if sum.EarlyExit {
+		t.Fatalf("did not expect early exit on WARN, got: %+v", sum)
+	}
+
+	if sum.Warn != 1 || sum.Pass != 1 || sum.Fail != 0 || sum.Error != 0 {
+		t.Fatalf("unexpected tallies for WARN: %+v", sum)
+	}
+
+	if len(sum.Results) != 2 || sum.Results[0].Name != "crit-warn" || sum.Results[1].Name != "norm-pass" {
+		t.Fatalf("unexpected results/order: %+v", sum.Results)
+	}
+}
+
+func TestValidate_NormalWarnAggregatedNoFailure(t *testing.T) {
+	checks.Reset()
+
+	checks.Register(mockCheck{
+		name:     "crit-pass",
+		priority: 1,
+		failFast: true,
+		result:   checks.Result{Status: checks.Pass, Message: "ok"},
+	})
+
+	checks.Register(mockCheck{
+		name:     "norm-warn",
+		priority: 100,
+		failFast: false,
+		result:   checks.Result{Status: checks.Warn, Message: "something to look at"},
+	})
+	checks.Register(mockCheck{
+		name:     "norm-pass",
+		priority: 100,
+		failFast: false,
+		result:   checks.Result{Status: checks.Pass, Message: "fine"},
+	})
+
+	sum, err := Validate(dataFixture(), "file.csv", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: WARN must not fail validation, got %v", err)
+	}
+
+	if sum.Warn != 1 || sum.Pass != 2 || sum.Fail != 0 || sum.Error != 0 {
+		t.Fatalf("unexpected tallies: %+v", sum)
+	}
+
+	names := []string{sum.Results[1].Name, sum.Results[2].Name}
+	sort.Strings(names)
+	want := []string{"norm-pass", "norm-warn"}
+	if !reflect.DeepEqual(names, want) {
+		t.Fatalf("unexpected normal check names: got %v, want %v", names, want)
 	}
 }

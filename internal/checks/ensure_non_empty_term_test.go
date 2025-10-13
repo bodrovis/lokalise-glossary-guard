@@ -1,4 +1,3 @@
-// ensure_non_empty_term_test.go
 package checks
 
 import "testing"

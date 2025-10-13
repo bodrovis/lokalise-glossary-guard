@@ -1,4 +1,3 @@
-// ensure_yn_flags_test.go
 package checks
 
 import (

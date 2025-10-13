@@ -15,6 +15,7 @@ var ErrValidationFailed = errors.New("validation failed")
 type Summary struct {
 	FilePath    string
 	Pass        int
+	Warn        int
 	Fail        int
 	Error       int
 	Results     []checks.Result
@@ -43,7 +44,7 @@ func Validate(data []byte, filePath string, langs []string) (Summary, error) {
 
 		tally(&sum, r)
 
-		if r.Status != checks.Pass {
+		if r.Status == checks.Fail || r.Status == checks.Error {
 			sum.EarlyExit = true
 			sum.EarlyCheck = c.Name()
 			sum.EarlyStatus = r.Status
@@ -73,19 +74,33 @@ func Validate(data []byte, filePath string, langs []string) (Summary, error) {
 
 		normStart := len(criticalChecks)
 		normSlice := sum.Results[normStart:]
+		statusRank := func(s checks.Status) int {
+			switch s {
+			case checks.Pass:
+				return 0
+			case checks.Warn:
+				return 1
+			case checks.Fail:
+				return 2
+			case checks.Error:
+				return 3
+			default:
+				return 4
+			}
+		}
 		sort.SliceStable(normSlice, func(i, j int) bool {
 			ni, nj := normSlice[i], normSlice[j]
 			if ni.Name != nj.Name {
 				return ni.Name < nj.Name
 			}
-
-			return ni.Status < nj.Status
+			return statusRank(ni.Status) < statusRank(nj.Status)
 		})
 	}
 
 	if sum.Fail > 0 || sum.Error > 0 {
 		return sum, ErrValidationFailed
 	}
+
 	return sum, nil
 }
 
@@ -99,10 +114,12 @@ func safeRun(c checks.Check, data []byte, path string, langs []string) (out chec
 			}
 		}
 	}()
+
 	r := c.Run(data, path, langs)
 	if r.Name == "" {
 		r.Name = c.Name()
 	}
+
 	return r
 }
 
@@ -110,6 +127,8 @@ func tally(sum *Summary, r checks.Result) {
 	switch r.Status {
 	case checks.Pass:
 		sum.Pass++
+	case checks.Warn:
+		sum.Warn++
 	case checks.Fail:
 		sum.Fail++
 	case checks.Error:

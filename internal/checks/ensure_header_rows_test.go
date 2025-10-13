@@ -1,4 +1,3 @@
-// ensure_header_test.go
 package checks
 
 import (
@@ -113,7 +112,7 @@ func TestEnsureHeader_Fail_ColumnCountMismatch_OnThirdRow(t *testing.T) {
 	}
 }
 
-func TestEnsureHeader_Fail_RowAfterBlankLines(t *testing.T) {
+func TestEnsureHeader_Warn_RowAfterBlankLines(t *testing.T) {
 	c := ensureHeader{}
 	content := "" +
 		"term;description\n" +
@@ -121,7 +120,7 @@ func TestEnsureHeader_Fail_RowAfterBlankLines(t *testing.T) {
 		"   \n" +
 		"valid;desc\n"
 	res := c.Run([]byte(content), "", nil)
-	if res.Status != Fail || !containsLower(res.Message, "Blank data row is not allowed (line 2)") {
+	if res.Status != Warn || !containsLower(res.Message, "Blank data row might cause issues, better remove (line 2)") {
 		t.Fatalf("Status=%s msg=%q", res.Status, res.Message)
 	}
 }
@@ -209,11 +208,11 @@ func TestEnsureHeader_Fail_DataMixedDelimiters_Commas(t *testing.T) {
 	}
 }
 
-func TestEnsureHeader_Fail_BlankLineInMiddle(t *testing.T) {
+func TestEnsureHeader_Warn_BlankLineInMiddle(t *testing.T) {
 	c := ensureHeader{}
 	content := "term;description\na;one\n\nb;two\n"
 	res := c.Run([]byte(content), "", nil)
-	if res.Status != Fail || !containsLower(res.Message, "blank data row is not allowed") {
+	if res.Status != Warn || !containsLower(res.Message, "Blank data row might cause issues, better remove (line 3)") {
 		t.Fatalf("Status=%s msg=%q", res.Status, res.Message)
 	}
 }

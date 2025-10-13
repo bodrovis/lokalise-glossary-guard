@@ -1,4 +1,3 @@
-// ensure_unique_terms_test.go
 package checks
 
 import "testing"
@@ -52,25 +51,25 @@ func TestEnsureUniqueTerms_Pass_CaseSensitiveDifferentValues(t *testing.T) {
 	}
 }
 
-func TestEnsureUniqueTerms_Fail_SimpleDuplicate(t *testing.T) {
+func TestEnsureUniqueTerms_Warn_SimpleDuplicate(t *testing.T) {
 	c := ensureUniqueTermsCS{}
 	content := "term;description\ndup;one\ndup;two\n"
 	res := c.Run([]byte(content), "", nil)
-	if res.Status != Fail || !containsLower(res.Message, "duplicate terms") {
-		t.Fatalf("Status=%s want FAIL, msg=%q", res.Status, res.Message)
+	if res.Status != Warn || !containsLower(res.Message, "duplicate terms") {
+		t.Fatalf("Status=%s want WARN, msg=%q", res.Status, res.Message)
 	}
 	if !containsLower(res.Message, "lines 2 and 3") {
 		t.Fatalf("Expected line numbers 2 and 3 in message: %q", res.Message)
 	}
 }
 
-func TestEnsureUniqueTerms_Fail_TrimmedDuplicates(t *testing.T) {
+func TestEnsureUniqueTerms_Warn_TrimmedDuplicates(t *testing.T) {
 	c := ensureUniqueTermsCS{}
 	// " foo " and "foo" should be considered duplicates after TrimSpace
 	content := "term;description\n  foo  ;d1\nfoo;d2\n"
 	res := c.Run([]byte(content), "", nil)
-	if res.Status != Fail {
-		t.Fatalf("Status=%s want FAIL (trimmed duplicates), msg=%q", res.Status, res.Message)
+	if res.Status != Warn {
+		t.Fatalf("Status=%s want WARN (trimmed duplicates), msg=%q", res.Status, res.Message)
 	}
 }
 
@@ -102,7 +101,7 @@ func TestEnsureUniqueTerms_Pass_CRLF(t *testing.T) {
 	}
 }
 
-func TestEnsureUniqueTerms_Fail_TruncatesLongDuplicateList(t *testing.T) {
+func TestEnsureUniqueTerms_Warn_TruncatesLongDuplicateList(t *testing.T) {
 	c := ensureUniqueTermsCS{}
 	// 1 header + 1 first occurrence + 12 duplicates => 12 hits, message should truncate to 10 shown
 	content := "term;description\nx;d0\n"
@@ -110,22 +109,22 @@ func TestEnsureUniqueTerms_Fail_TruncatesLongDuplicateList(t *testing.T) {
 		content += "x;d\n"
 	}
 	res := c.Run([]byte(content), "", nil)
-	if res.Status != Fail {
-		t.Fatalf("Status=%s want FAIL, msg=%q", res.Status, res.Message)
+	if res.Status != Warn {
+		t.Fatalf("Status=%s want WARN, msg=%q", res.Status, res.Message)
 	}
-	// Expect truncation hint "…and N more" (unicode ellipsis)
-	if !containsLower(res.Message, "…and ") && !containsLower(res.Message, "...and ") {
+
+	if !containsLower(res.Message, "...and ") {
 		t.Fatalf("Expected truncation hint in message, got: %q", res.Message)
 	}
 }
 
-func TestEnsureUniqueTerms_Fail_BOMInFirstDataCellThenSameValue(t *testing.T) {
+func TestEnsureUniqueTerms_Warn_BOMInFirstDataCellThenSameValue(t *testing.T) {
 	c := ensureUniqueTermsCS{}
 	// First data row has BOM+foo (trimmed on line==2), second row "foo" -> duplicate
 	content := "term;description\n\uFEFFfoo;d1\nfoo;d2\n"
 	res := c.Run([]byte(content), "", nil)
-	if res.Status != Fail {
-		t.Fatalf("Status=%s want FAIL (BOM normalized), msg=%q", res.Status, res.Message)
+	if res.Status != Warn {
+		t.Fatalf("Status=%s want WARN (BOM normalized), msg=%q", res.Status, res.Message)
 	}
 }
 

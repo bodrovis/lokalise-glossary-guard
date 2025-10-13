@@ -10,6 +10,7 @@ type Status string
 
 const (
 	Pass  Status = "PASS"
+	Warn  Status = "WARN"
 	Fail  Status = "FAIL"
 	Error Status = "ERROR"
 )
@@ -22,6 +23,10 @@ type Result struct {
 
 func Passf(name, format string, args ...any) Result {
 	return Result{Name: name, Status: Pass, Message: sprintf(format, args...)}
+}
+
+func Warnf(name, format string, args ...any) Result {
+	return Result{Name: name, Status: Warn, Message: sprintf(format, args...)}
 }
 
 func Failf(name, format string, args ...any) Result {

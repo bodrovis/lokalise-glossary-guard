@@ -137,8 +137,8 @@ func (ensureHeader) Run(data []byte, _filePath string, _langs []string) Result {
 			if strings.TrimSpace(sc.Text()) == "" {
 				return Result{
 					Name:    ensHdrRowsName,
-					Status:  Fail,
-					Message: fmt.Sprintf("Blank data row is not allowed (line %d)", lineNo),
+					Status:  Warn,
+					Message: fmt.Sprintf("Blank data row might cause issues, better remove (line %d)", lineNo),
 				}
 			}
 		}
@@ -203,7 +203,7 @@ func (ensureHeader) Run(data []byte, _filePath string, _langs []string) Result {
 		}
 		if allEmpty {
 			line := 1 + seenValid + 1 // header(1) + already valid rows + current
-			return Result{Name: ensHdrRowsName, Status: Fail, Message: fmt.Sprintf("Blank data row is not allowed (line %d)", line)}
+			return Result{Name: ensHdrRowsName, Status: Warn, Message: fmt.Sprintf("Blank data row might cause issues, better remove (line %d)", line)}
 		}
 
 		seenValid++

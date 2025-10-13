@@ -1,4 +1,3 @@
-// checks_test.go
 package checks
 
 import (
@@ -148,5 +147,49 @@ func TestReset_ClearsRegistry(t *testing.T) {
 	Reset()
 	if len(All) != 0 {
 		t.Fatalf("reset did not clear registry; len=%d", len(All))
+	}
+}
+
+func TestResultHelpers_StatusAndFormatting(t *testing.T) {
+	r1 := Passf("pass", "ok")
+	if r1.Name != "pass" || r1.Status != Pass || r1.Message != "ok" {
+		t.Fatalf("Passf wrong: %+v", r1)
+	}
+
+	r2 := Warnf("warn", "heads-up %d", 42)
+	if r2.Name != "warn" || r2.Status != Warn || r2.Message != "heads-up 42" {
+		t.Fatalf("Warnf wrong: %+v", r2)
+	}
+
+	// без аргументов формат должен проходить как есть
+	r3 := Failf("fail", "bad stuff")
+	if r3.Name != "fail" || r3.Status != Fail || r3.Message != "bad stuff" {
+		t.Fatalf("Failf wrong: %+v", r3)
+	}
+
+	r4 := Errorf("err", "boom: %s", "X")
+	if r4.Name != "err" || r4.Status != Error || r4.Message != "boom: X" {
+		t.Fatalf("Errorf wrong: %+v", r4)
+	}
+}
+
+func TestFromFunc_ReturnsWarnAndMetadata(t *testing.T) {
+	c := FromFunc("warn-check", false, 5, func(_ []byte, _ string, _ []string) Result {
+		return Warnf("warn-check", "be careful")
+	})
+
+	if c.Name() != "warn-check" {
+		t.Fatalf("Name mismatch: %s", c.Name())
+	}
+	if c.FailFast() {
+		t.Fatalf("FailFast should be false")
+	}
+	if c.Priority() != 5 {
+		t.Fatalf("Priority mismatch: %d", c.Priority())
+	}
+
+	out := c.Run(nil, "", nil)
+	if out.Status != Warn || out.Name != "warn-check" || out.Message != "be careful" {
+		t.Fatalf("Run result mismatch: %+v", out)
 	}
 }

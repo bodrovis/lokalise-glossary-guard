@@ -1,4 +1,3 @@
-// ensure_csv_test.go
 package checks
 
 import (

@@ -1,4 +1,3 @@
-// ensure_known_headers_with_langs_test.go
 package checks
 
 import (
