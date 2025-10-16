@@ -14,8 +14,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bodrovis/lokalise-glossary-guard/internal/checks"
-	"github.com/bodrovis/lokalise-glossary-guard/pkg/validator"
+	"github.com/bodrovis/lokalise-glossary-guard-core/pkg/checks"
+	"github.com/bodrovis/lokalise-glossary-guard-core/pkg/validator"
 )
 
 var (
