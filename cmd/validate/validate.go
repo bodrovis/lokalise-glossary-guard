@@ -1,6 +1,7 @@
 package validate
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bodrovis/lokalise-glossary-guard-core/pkg/checks"
+	_ "github.com/bodrovis/lokalise-glossary-guard-core/pkg/checks/all"
 	"github.com/bodrovis/lokalise-glossary-guard-core/pkg/validator"
 )
 
@@ -24,6 +26,10 @@ var (
 	maxParallel uint
 	jsonOut     bool
 	noColor     bool
+
+	doFix         bool
+	hardFailOnErr bool
+	rerunAfterFix bool
 
 	clrReset  = "\x1b[0m"
 	clrRed    = "\x1b[31m"
@@ -52,109 +58,82 @@ type job struct {
 
 var validateCmd = &cobra.Command{
 	Use:   "validate",
-	Short: "Validate one or multiple glossary files for structure, encoding and consistency",
-	Long: `Run a full set of validation checks against one or multiple glossary CSV files.
-
-The validator inspects file encoding, header correctness, column uniqueness,
-language declarations, boolean flags, and term consistency. It can detect
-malformed headers, unknown or missing language codes, duplicate entries, or
-non-UTF8 input.
-
-Each file is analyzed independently and reported with PASS / WARN / FAIL / ERROR status.
+	Short: "Validate one or multiple glossary files; optionally apply auto-fixes to _fixed copies",
+	Long: `Run all registered checks against one or multiple glossary CSV files.
 
 Examples:
-  # Validate a single glossary file
+  # Validate a single file (no fixes)
   glossary-guard validate -f glossary.csv
 
-  # Validate several files listed explicitly
-  glossary-guard validate -f file1.csv -f file2.csv
+  # Validate and attempt fixes (writes glossary_fixed.csv on change)
+  glossary-guard validate -f glossary.csv --fix
 
-  # Validate multiple files with declared languages
-  glossary-guard validate -f glossary.csv -l en -l de -l fr
+  # Multiple files + explicit languages
+  glossary-guard validate -f a.csv -f b.csv -l en -l de -l fr --fix
 
-  # Using comma-separated file list (equivalent)
-  glossary-guard validate -f file1.csv,file2.csv -l en_US,de_DE
-
-By default, all built-in checks are executed:
-  - UTF-8 encoding
-  - Known headers and optional language columns
-  - Orphaned *_description columns
-  - Duplicate headers
-  - Duplicate terms (case-sensitive)
-  - Invalid Y/N flags (casesensitive/translatable/forbidden)
+  # Glob + parallel workers
+  glossary-guard validate -f "data/*.csv" --parallel 8
 `,
 	PreRunE: func(cmd *cobra.Command, args []string) error {
 		if len(files) == 0 {
 			return fmt.Errorf("no files provided; use --files to specify one or more CSV files")
 		}
-
 		if !noColor && os.Getenv("NO_COLOR") != "" {
 			noColor = true
 		}
-
 		langs = preprocessLangs(langs)
 
 		var err error
 		files, err = expandFiles(files)
-
-		return err
-	},
-	RunE: func(cmd *cobra.Command, args []string) error {
-		start := time.Now()
-
-		if len(checks.All) == 0 {
+		if err != nil {
+			return err
+		}
+		if len(checks.List()) == 0 {
 			fmt.Fprintln(os.Stderr, red("No checks registered. Nothing to run."))
 			return fmt.Errorf("no checks to run")
 		}
-
-		critFlags := make(map[string]bool)
-		crit, norm := checks.Split()
-
-		for _, c := range crit {
-			critFlags[c.Name()] = true
-		}
-
-		for _, c := range norm {
-			if _, ok := critFlags[c.Name()]; !ok {
-				critFlags[c.Name()] = false
-			}
-		}
-
+		return nil
+	},
+	RunE: func(cmd *cobra.Command, args []string) error {
+		start := time.Now()
 		sep := strings.Repeat("─", 72)
 
 		jobs := make(chan job)
 		outcomes := make([]fileOutcome, len(files))
 
-		var wg sync.WaitGroup
-
 		if maxParallel < 1 {
 			maxParallel = uint(runtime.GOMAXPROCS(0))
 		}
-
 		workers := min(int(maxParallel), len(files))
 		workers = max(1, workers)
 
+		var wg sync.WaitGroup
 		wg.Add(workers)
+
+		ctx := cmd.Context()
+		opts := buildRunOptions()
 
 		for w := 0; w < workers; w++ {
 			go func() {
 				defer wg.Done()
 				for j := range jobs {
-					oc := runOneFile(j.idx, j.path, critFlags, langs, sep)
-					outcomes[j.idx] = oc
+					outcomes[j.idx] = runOneFile(ctx, j.idx, j.path, langs, sep, opts)
 				}
 			}()
 		}
 
 		go func() {
 			for i, p := range files {
-				jobs <- job{idx: i, path: p}
+				select {
+				case <-ctx.Done():
+					return
+				case jobs <- job{idx: i, path: p}:
+				}
 			}
 			close(jobs)
 		}()
 
 		wg.Wait()
-
 		return finalize(outcomes, len(files), start)
 	},
 }
@@ -165,14 +144,14 @@ func Init(root *cobra.Command) {
 		"files",
 		"f",
 		nil,
-		"Path(s) to glossary file(s) to validate (comma-separated or repeatable, supports globs)",
+		"Path(s) to glossary file(s) (comma-separated or repeatable, supports globs)",
 	)
 
 	validateCmd.Flags().UintVar(
 		&maxParallel,
 		"parallel",
 		uint(runtime.GOMAXPROCS(0)),
-		"Maximum number of files to validate in parallel",
+		"Maximum number of files to process in parallel",
 	)
 
 	validateCmd.Flags().StringSliceVarP(
@@ -180,40 +159,50 @@ func Init(root *cobra.Command) {
 		"langs",
 		"l",
 		nil,
-		"Language codes to expect in the header (e.g. en,fr,de or de_DE,pt-BR)",
+		"Language codes expected in header (e.g. en,fr,de or de_DE,pt-BR)",
 	)
 
 	validateCmd.Flags().BoolVar(&noColor, "no-color", false, "Disable colored output (also honored if NO_COLOR is set)")
-
 	validateCmd.Flags().BoolVar(&jsonOut, "json", false, "Output results as JSON (machine-readable)")
 
+	validateCmd.Flags().BoolVar(&doFix, "fix", false, "Attempt auto-fixes (writes *_fixed.csv on change)")
+	validateCmd.Flags().BoolVar(&hardFailOnErr, "hard-fail-on-error", false, "Exit non-zero when any check returns ERROR")
+	validateCmd.Flags().BoolVar(&rerunAfterFix, "rerun-after-fix", true, "Re-run validation after a successful fix")
+
 	root.AddCommand(validateCmd)
+}
+
+func buildRunOptions() checks.RunOptions {
+	fm := checks.FixNone
+	if doFix {
+		fm = checks.FixIfNotPass
+	}
+	return checks.RunOptions{
+		FixMode:       fm,
+		RerunAfterFix: rerunAfterFix,
+		HardFailOnErr: hardFailOnErr,
+	}
 }
 
 func preprocessLangs(ls []string) []string {
 	if len(ls) == 0 {
 		return nil
 	}
-
 	seen := make(map[string]struct{}, len(ls))
-	var out []string
-
+	out := make([]string, 0, len(ls))
 	for _, v := range ls {
-		for part := range strings.SplitSeq(v, ",") {
+		for _, part := range strings.Split(v, ",") {
 			s := strings.TrimSpace(part)
 			if s == "" {
 				continue
 			}
-
 			if _, ok := seen[s]; ok {
 				continue
 			}
-
 			seen[s] = struct{}{}
 			out = append(out, s)
 		}
 	}
-
 	sort.Strings(out)
 	return out
 }
@@ -223,12 +212,11 @@ func expandFiles(fs []string) ([]string, error) {
 	var out []string
 
 	for _, f := range fs {
-		for p := range strings.SplitSeq(f, ",") {
-			p = strings.TrimSpace(p)
+		for _, raw := range strings.Split(f, ",") {
+			p := strings.TrimSpace(raw)
 			if p == "" {
 				continue
 			}
-
 			if hasGlob(p) {
 				matches, err := filepath.Glob(p)
 				if err != nil {
@@ -245,7 +233,6 @@ func expandFiles(fs []string) ([]string, error) {
 				}
 				continue
 			}
-
 			if _, ok := seen[p]; ok {
 				continue
 			}
@@ -253,16 +240,13 @@ func expandFiles(fs []string) ([]string, error) {
 			out = append(out, p)
 		}
 	}
-
 	if len(out) == 0 {
 		return nil, fmt.Errorf("no files matched the provided patterns")
 	}
 	return out, nil
 }
 
-func hasGlob(s string) bool {
-	return strings.ContainsAny(s, "*?[]")
-}
+func hasGlob(s string) bool { return strings.ContainsAny(s, "*?[]") }
 
 func finalize(outcomes []fileOutcome, filesCount int, start time.Time) error {
 	if jsonOut {
@@ -276,18 +260,16 @@ func finalize(outcomes []fileOutcome, filesCount int, start time.Time) error {
 	}
 
 	hadOpErr, hadValFail, filesPassed, filesFailed, filesErrored := printAndAggregate(outcomes, filesCount, start)
-
 	if hadOpErr {
 		return fmt.Errorf("one or more files could not be validated due to an error")
 	}
 	if hadValFail {
-		return validator.ErrValidationFailed
+		return fmt.Errorf("validation failed")
 	}
 
 	_ = filesPassed
 	_ = filesFailed
 	_ = filesErrored
-
 	return nil
 }
 
@@ -301,7 +283,9 @@ func printAndAggregate(outcomes []fileOutcome, filesCount int, start time.Time) 
 		filesPassed += oc.Passed
 		filesFailed += oc.Failed
 		filesErrored += oc.Errored
-		totalWarns += oc.Summary.Warn
+		if oc.Summary != nil {
+			totalWarns += oc.Summary.Warn
+		}
 		hadOpErr = hadOpErr || oc.HadOpErr
 		hadValFail = hadValFail || oc.HadValFail
 	}
@@ -315,7 +299,6 @@ func printAndAggregate(outcomes []fileOutcome, filesCount int, start time.Time) 
 			red(fmt.Sprint(filesErrored)),
 		)
 	}
-
 	fmt.Printf("\nTotal time: %v\n", time.Since(start).Round(time.Millisecond))
 	return hadOpErr, hadValFail, filesPassed, filesFailed, filesErrored
 }
@@ -330,17 +313,20 @@ func aggregateReturnCode(outcomes []fileOutcome) error {
 		return fmt.Errorf("one or more files could not be validated due to an error")
 	}
 	if hadValFail {
-		return validator.ErrValidationFailed
+		return fmt.Errorf("validation failed")
 	}
 	return nil
 }
 
-func runOneFile(i int, path string, critFlags map[string]bool, langs []string, sep string) fileOutcome {
+func runOneFile(ctx context.Context, i int, path string, langs []string, sep string, opts checks.RunOptions) fileOutcome {
 	var b strings.Builder
 	if i > 0 {
 		b.WriteByte('\n')
 	}
 	fmt.Fprintf(&b, "%s\n%s: %s\n%s\n\n", sep, cyan("Validating"), path, sep)
+
+	fmt.Fprintf(&b, "Mode: FixMode=%v, RerunAfterFix=%v, HardFailOnErr=%v\n\n",
+		opts.FixMode, opts.RerunAfterFix, opts.HardFailOnErr)
 
 	oc := fileOutcome{Idx: i, Path: path}
 
@@ -353,24 +339,31 @@ func runOneFile(i int, path string, critFlags map[string]bool, langs []string, s
 		return oc
 	}
 
-	sum, err := validator.Validate(data, path, langs)
+	sum, verr := validator.Validate(ctx, path, data, langs, opts)
 	oc.Summary = &sum
 
-	if err != nil && !errors.Is(err, validator.ErrValidationFailed) {
-		fmt.Fprintf(&b, "%s: %v\n%s\n", red("ERROR"), err, sep)
-		oc.HadOpErr = true
-		oc.Errored++
-		oc.Output = b.String()
-		return oc
-	}
-
-	for _, r := range sum.Results {
+	// print check-by-check
+	for _, o := range sum.Outcomes {
 		tag := "NORM"
-		if critFlags[r.Name] {
+		if cu, ok := checks.Lookup(o.Result.Name); ok && cu.FailFast() {
 			tag = "CRIT"
 		}
-		fmt.Fprintf(&b, "→ [%s] %s ... %s\n   %s\n",
-			tag, r.Name, colorStatus(string(r.Status)), r.Message)
+		changed := ""
+		if o.Final.DidChange {
+			changed = " [changed]"
+		}
+
+		msg := oneLine(strings.TrimSpace(o.Result.Message))
+		if msg == "" {
+			msg = "-"
+		}
+		note := oneLine(strings.TrimSpace(o.Final.Note))
+		if note != "" {
+			msg = msg + " | note: " + note
+		}
+
+		fmt.Fprintf(&b, "→ [%s] %s ... %s%s\n", tag, o.Result.Name, colorStatus(string(o.Result.Status)), changed)
+		fmt.Fprintf(&b, "   %s\n", msg)
 	}
 
 	fmt.Fprintf(&b, "\nSummary for %s: %s passed, %s warning(s), %s failed, %s errors\n",
@@ -382,33 +375,53 @@ func runOneFile(i int, path string, critFlags map[string]bool, langs []string, s
 	)
 
 	if sum.EarlyExit {
-		total := len(checks.All)
+		total := len(checks.List())
 		skipped := 0
-		if total > len(sum.Results) {
-			skipped = total - len(sum.Results)
+		if total > len(sum.Outcomes) {
+			skipped = total - len(sum.Outcomes)
 		}
 		fmt.Fprintf(&b, "%s due to fail-fast in check %q (%s). Skipped %d remaining check(s).\n",
 			red("Stopped early"),
 			sum.EarlyCheck, string(sum.EarlyStatus), skipped)
 	}
 
-	if sum.Fail > 0 || sum.Error > 0 || (err != nil && errors.Is(err, validator.ErrValidationFailed)) {
+	// write *_fixed if we applied fixes
+	if opts.FixMode != checks.FixNone && sum.AppliedFixes {
+		outPath := withFixedPostfix(sum.FinalPath)
+		if writeErr := os.WriteFile(outPath, sum.FinalData, 0o644); writeErr != nil {
+			fmt.Fprintf(&b, "%s writing fixed file: %v\n", red("ERROR"), writeErr)
+			oc.HadOpErr = true
+			oc.Errored++
+		} else {
+			fmt.Fprintf(&b, "%s wrote fixed file: %s (bytes=%d)\n", cyan("Info"), outPath, len(sum.FinalData))
+		}
+	}
+
+	// overall result per file
+	if sum.Fail > 0 || sum.Error > 0 || (verr != nil && !errors.Is(verr, context.Canceled)) {
 		fmt.Fprintln(&b, red("Result: FAILED"))
 		oc.Failed++
 		oc.HadValFail = true
+	} else if sum.Warn > 0 {
+		fmt.Fprintln(&b, yellow("Result: PASSED WITH WARNINGS"))
+		oc.Warned++
 	} else {
-		if sum.Warn > 0 {
-			fmt.Fprintln(&b, yellow("Result: PASSED WITH WARNINGS"))
-			oc.Warned++
-		} else {
-			fmt.Fprintln(&b, green("Result: PASSED"))
-			oc.Passed++
-		}
+		fmt.Fprintln(&b, green("Result: PASSED"))
+		oc.Passed++
 	}
 
 	fmt.Fprintf(&b, "%s\n", sep)
 	oc.Output = b.String()
 	return oc
+}
+
+func withFixedPostfix(p string) string {
+	ext := filepath.Ext(p)
+	base := strings.TrimSuffix(p, ext)
+	if strings.HasSuffix(base, "_fixed") {
+		return base + ext
+	}
+	return base + "_fixed" + ext
 }
 
 func green(s string) string {
@@ -445,7 +458,13 @@ func colorStatus(s string) string {
 		return green(s)
 	case "WARN":
 		return yellow(s)
-	default: // FAIL, ERROR, unknown
-		return red(s)
+	default:
+		return red(s) // FAIL/ERROR
 	}
+}
+
+func oneLine(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	return strings.Join(strings.Fields(s), " ")
 }
