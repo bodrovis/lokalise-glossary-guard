@@ -18,8 +18,8 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: '1.25'
+        go-version: '1.26'
         cache: false
         
     - name: Run tests
-      run: go test ./... -v
+      run: go test -shuffle=on -count=1 -race ./...

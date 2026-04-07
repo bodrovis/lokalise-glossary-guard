@@ -129,4 +129,4 @@ term;description;casesensitive;translatable;forbidden;tags;en;en_description;de_
 
 ## License
 
-BSD Clause 3
+(c) [Elijah S. Krukowski](https://bodrovis.tech), BSD-3-Clause license
