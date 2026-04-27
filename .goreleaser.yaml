@@ -4,6 +4,7 @@ project_name: lokalise-glossary-guard
 
 before:
   hooks:
+    - go mod tidy
     - go mod verify
 
 builds:
@@ -15,7 +16,11 @@ builds:
     flags:
       - -trimpath
     ldflags:
-      - "-s -w -X github.com/bodrovis/lokalise-glossary-guard/cmd.version={{ .Version }}"
+      - >-
+        -s -w
+        -X github.com/bodrovis/lokalise-glossary-guard/cmd.version={{ .Version }}
+        -X github.com/bodrovis/lokalise-glossary-guard/cmd.commit={{ .Commit }}
+        -X github.com/bodrovis/lokalise-glossary-guard/cmd.date={{ .CommitDate }}
     mod_timestamp: "{{ .CommitTimestamp }}"
     goos:
       - linux
@@ -43,8 +48,19 @@ builds:
     binary: lokalise-glossary-guard
     env:
       - CGO_ENABLED=0
-    goos: [js]
-    goarch: [wasm]
+    flags:
+      - -trimpath
+    ldflags:
+      - >-
+        -s -w
+        -X github.com/bodrovis/lokalise-glossary-guard/cmd.version={{ .Version }}
+        -X github.com/bodrovis/lokalise-glossary-guard/cmd.commit={{ .Commit }}
+        -X github.com/bodrovis/lokalise-glossary-guard/cmd.date={{ .CommitDate }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    goos:
+      - js
+    goarch:
+      - wasm
 
 upx:
   - ids: [cli]
@@ -57,31 +73,53 @@ upx:
       - windows
 
 archives:
-  - id: default
+  - id: cli
     ids: [cli]
     formats: [tar.gz]
     name_template: >-
       {{ .ProjectName }}_
+      {{- .Version }}_
       {{- title .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
+    files:
+      - README*
+      - LICENSE*
     format_overrides:
       - goos: windows
         formats: [zip]
 
+  - id: wasm
+    ids: [wasm]
+    formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_wasm"
+    files:
+      - README*
+      - LICENSE*
+
 checksum:
-  name_template: "checksums.txt"
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+
+sboms:
+  - artifacts: archive
 
 release:
   draft: false
-  prerelease: false
+  prerelease: auto
+  mode: replace
 
 changelog:
-  sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
-      - "^chore:"
+  disable: true
+
+signs:
+  - artifacts: checksum
+    cmd: cosign
+    args:
+      - "sign-blob"
+      - "--yes"
+      - "--output-signature"
+      - "${signature}"
+      - "${artifact}"
