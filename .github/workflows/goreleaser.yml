@@ -8,6 +8,8 @@ on:
 permissions:
   contents: write
   id-token: write
+  attestations: write
+  artifact-metadata: write
 
 jobs:
   goreleaser:
@@ -43,3 +45,12 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Find checksum file
+        shell: bash
+        run: echo "CHECKSUMS_FILE=$(ls dist/*_checksums.txt)" >> "$GITHUB_ENV"
+
+      - name: Generate artifact attestation
+        uses: actions/attest@v4.1.0
+        with:
+          subject-checksums: ${{ env.CHECKSUMS_FILE }}
