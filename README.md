@@ -127,6 +127,24 @@ term;description;casesensitive;translatable;forbidden;tags;en;en_description;de_
 - Empty rows are not recommended.
 - Validation is case-insensitive for headers, but term values are checked case-sensitively for duplicates.
 
+## Testing
+
+Run:
+
+```
+go test -shuffle=on -count=1 -race ./...
+```
+
+## Release verification
+
+Each release includes extra verification artifacts:
+
+- `*_checksums.txt` — SHA256 checksums for release files
+- `*_checksums.txt.sigstore.json` — Cosign signature bundle for the checksum file
+- `*.sbom.json` — SBOM files generated for release archives
+
+GitHub Artifact Attestations are available at: [github.com/bodrovis/lokalise-glossary-guard/attestations](https://github.com/bodrovis/lokalise-glossary-guard/attestations).
+
 ## License
 
 (c) [Elijah S. Krukowski](https://bodrovis.tech), BSD-3-Clause license
