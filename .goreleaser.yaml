@@ -115,11 +115,12 @@ changelog:
   disable: true
 
 signs:
-  - artifacts: checksum
+  - id: checksums
     cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    artifacts: checksum
     args:
-      - "sign-blob"
-      - "--yes"
-      - "--output-signature"
-      - "${signature}"
+      - sign-blob
+      - "--bundle=${signature}"
       - "${artifact}"
+      - "--yes"
