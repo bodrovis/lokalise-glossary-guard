@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/bodrovis/lokalise-glossary-guard/cmd/validate"
@@ -9,7 +8,11 @@ import (
 	"github.com/spf13/cobra/doc"
 )
 
-var version = "dev"
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
 
 func RootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
@@ -30,17 +33,15 @@ and Y/N flags catching the most common issues (wrong delimiter, missing term/des
 		Use:   "version",
 		Short: "Show version info",
 		Run: func(cmd *cobra.Command, args []string) {
-			cmd.Printf("glossary-guard %s\n", version)
+			cmd.Printf("glossary-guard %s\ncommit: %s\nbuilt at: %s\n", version, commit, date)
 		},
 	})
 
 	rootCmd.AddCommand(&cobra.Command{
 		Use:    "gendocs",
 		Hidden: true,
-		Run: func(cmd *cobra.Command, args []string) {
-			if err := generateDocs(rootCmd, "./docs"); err != nil {
-				fmt.Fprintf(os.Stderr, "error generating docs: %v", err)
-			}
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return generateDocs(rootCmd, "./docs")
 		},
 	})
 
