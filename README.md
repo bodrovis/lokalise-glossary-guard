@@ -82,11 +82,12 @@ Each glossary CSV file is validated sequentially through the following checks:
 | 8 | **`ensure-lowercase-header`** | Ensures all known header names are lowercase (except locale-related ones). |
 | 9 | **`ensure-term-description-header`** | Validates that the header includes the required `term` and `description` columns. |
 | 10 | **`ensure-allowed-columns-header`** | Allows only known headers. |
-| 11 | **`ensure-no-duplicate-header-cells`** | Detects duplicate header names. |
-| 12 | **`ensure-no-empty-term-values`** | Ensures that every `term` cell contains a non-empty value. |
-| 13 | **`ensure-no-duplicate-term-values`** | Checks that `term` values are unique (case-sensitive). |
-| 14 | **`ensure-no-orphan-locale-descriptions`** | Prevents `_description` columns without corresponding language columns. |
-| 15 | **`ensure-no-invalid-flags`** | Validates flag columns (`casesensitive`, `translatable`, `forbidden`) contain only `yes`/`no` values. |
+| 11 | **`warn-duplicate-header-cells`** | Detects duplicate header names. |
+| 12 | **`no-empty-term-values`** | Ensures that every `term` cell contains a non-empty value. |
+| 13 | **`warn-duplicate-term-values`** | Checks that `term` values are unique (case-sensitive). |
+| 14 | **`warn-orphan-locale-descriptions`** | Prevents `_description` columns without corresponding language columns. |
+| 15 | **`no-invalid-flags`** | Validates flag columns (`casesensitive`, `translatable`, `forbidden`) contain only `yes`/`no` values. |
+| 15 | **`no-forbidden-non-translatable-terms`** | Checks there are no terms that are both non-translatable and forbidden. |
 
 ## Guidelines for creating glossary CSV files
 
