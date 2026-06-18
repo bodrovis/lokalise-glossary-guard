@@ -44,8 +44,8 @@ builds:
         goarch: arm
 
   - id: wasm
-    main: .
-    binary: lokalise-glossary-guard
+    main: ./wasm
+    binary: lokalise-glossary-guard.wasm
     env:
       - CGO_ENABLED=0
     flags:
@@ -98,6 +98,8 @@ archives:
     files:
       - README*
       - LICENSE*
+      - src: "{{ .Env.GOROOT }}/misc/wasm/wasm_exec.js"
+        dst: wasm_exec.js
 
 checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
