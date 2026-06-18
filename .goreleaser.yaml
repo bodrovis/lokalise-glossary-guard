@@ -45,7 +45,7 @@ builds:
 
   - id: wasm
     main: ./wasm
-    binary: lokalise-glossary-guard.wasm
+    binary: lokalise-glossary-guard
     env:
       - CGO_ENABLED=0
     flags:
