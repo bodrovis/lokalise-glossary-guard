@@ -41,3 +41,7 @@ checksums.txt
 *.mock
 *.tmp
 *.generated.go
+
+tmp.txt
+
+web/
