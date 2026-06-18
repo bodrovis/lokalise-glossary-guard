@@ -98,7 +98,7 @@ archives:
     files:
       - README*
       - LICENSE*
-      - src: "{{ .Env.GOROOT }}/misc/wasm/wasm_exec.js"
+      - src: build/wasm/wasm_exec.js
         dst: wasm_exec.js
 
 checksum:

@@ -40,6 +40,17 @@ jobs:
       - name: Export GOROOT
         run: echo "GOROOT=$(go env GOROOT)" >> "$GITHUB_ENV"
 
+      - name: Copy wasm_exec.js
+        shell: bash
+        run: |
+          mkdir -p build/wasm
+
+          if [ -f "$(go env GOROOT)/lib/wasm/wasm_exec.js" ]; then
+            cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" build/wasm/wasm_exec.js
+          else
+            cp "$(go env GOROOT)/misc/wasm/wasm_exec.js" build/wasm/wasm_exec.js
+          fi
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7.2.2
         with:
