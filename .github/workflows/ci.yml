@@ -30,7 +30,7 @@ jobs:
       with:
         token: ${{ secrets.QLTY_COVERAGE_TOKEN }}
         files: coverage.out
-        strip-prefix: github.com/bodrovis/lokalise-glossary-guard-core/
+        strip-prefix: github.com/bodrovis/lokalise-glossary-guard/
 
     - name: Set up Node
       uses: actions/setup-node@v6
