@@ -15,7 +15,6 @@ func TestValidateBytes_ValidDataPasses(t *testing.T) {
 		Path: "glossary.csv",
 		Data: []byte(validCSV()),
 	})
-
 	if err != nil {
 		t.Fatalf("ValidateBytes returned error: %v", err)
 	}
@@ -49,7 +48,6 @@ func TestValidateBytes_UsesTextWhenDataIsNil(t *testing.T) {
 		Path: "glossary.csv",
 		Text: validCSV(),
 	})
-
 	if err != nil {
 		t.Fatalf("ValidateBytes returned error: %v", err)
 	}
@@ -68,7 +66,6 @@ func TestValidateBytes_PrefersDataOverText(t *testing.T) {
 		// Invalid text should be ignored because Data is present.
 		Text: "",
 	})
-
 	if err != nil {
 		t.Fatalf("ValidateBytes returned error: %v", err)
 	}
@@ -82,7 +79,6 @@ func TestValidateBytes_InvalidCSVFailsWithoutGoError(t *testing.T) {
 		Path: "glossary.csv",
 		Data: []byte("term,description\nhello,world\n"),
 	})
-
 	if err != nil {
 		t.Fatalf("ValidateBytes returned error: %v", err)
 	}
@@ -108,7 +104,6 @@ func TestValidateBytes_EmptyDataFails(t *testing.T) {
 		Path: "glossary.csv",
 		Data: []byte(""),
 	})
-
 	if err != nil {
 		t.Fatalf("ValidateBytes returned error: %v", err)
 	}
@@ -126,7 +121,6 @@ func TestValidateBytes_InvalidUTF8Fails(t *testing.T) {
 		Path: "glossary.csv",
 		Data: []byte{0xff, 0xfe, 0xfd},
 	})
-
 	if err != nil {
 		t.Fatalf("ValidateBytes returned error: %v", err)
 	}
@@ -144,7 +138,6 @@ func TestValidateBytes_InvalidExtensionFails(t *testing.T) {
 		Path: "glossary.txt",
 		Data: []byte(validCSV()),
 	})
-
 	if err != nil {
 		t.Fatalf("ValidateBytes returned error: %v", err)
 	}
@@ -163,7 +156,6 @@ func TestValidateBytes_FixReturnsFixedDataAndText(t *testing.T) {
 		Data: []byte(csvWithEmptyLine()),
 		Fix:  true,
 	})
-
 	if err != nil {
 		t.Fatalf("ValidateBytes returned error: %v", err)
 	}
@@ -199,7 +191,6 @@ func TestValidateBytes_FixDisabledDoesNotReturnFixedData(t *testing.T) {
 		Data: []byte(csvWithEmptyLine()),
 		Fix:  false,
 	})
-
 	if err != nil {
 		t.Fatalf("ValidateBytes returned error: %v", err)
 	}
@@ -226,7 +217,6 @@ func TestValidateBytes_FixWithExplicitRerunAfterFixFalse(t *testing.T) {
 		Fix:           true,
 		RerunAfterFix: &rerunAfterFix,
 	})
-
 	if err != nil {
 		t.Fatalf("ValidateBytes returned error: %v", err)
 	}
@@ -249,7 +239,6 @@ func TestValidateBytesJSON_ValidResponse(t *testing.T) {
 		Path: "glossary.csv",
 		Data: []byte(validCSV()),
 	})
-
 	if err != nil {
 		t.Fatalf("ValidateBytesJSON returned error: %v", err)
 	}
@@ -269,7 +258,6 @@ func TestValidateBytesJSON_FixedDataIsNotSerialized(t *testing.T) {
 		Data: []byte(csvWithEmptyLine()),
 		Fix:  true,
 	})
-
 	if err != nil {
 		t.Fatalf("ValidateBytesJSON returned error: %v", err)
 	}

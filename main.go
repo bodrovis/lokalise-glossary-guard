@@ -19,7 +19,7 @@ func run(args []string, stdout io.Writer, stderr io.Writer) int {
 	rootCmd.SetErr(stderr)
 
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(stderr, err)
+		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
 

@@ -35,7 +35,6 @@ func TestValidateRequestFromArgs_ValidJSONString(t *testing.T) {
 			"hard_fail_on_error": true
 		}`),
 	})
-
 	if err != nil {
 		t.Fatalf("validateRequestFromArgs returned error: %v", err)
 	}
@@ -83,7 +82,6 @@ func TestValidateRequestFromArgs_ValidJSObject(t *testing.T) {
 			"hard_fail_on_error": true,
 		}),
 	})
-
 	if err != nil {
 		t.Fatalf("validateRequestFromArgs returned error: %v", err)
 	}
@@ -167,7 +165,6 @@ func TestInputToJSON_Object(t *testing.T) {
 		"data": "csv text",
 		"fix":  true,
 	}))
-
 	if err != nil {
 		t.Fatalf("inputToJSON returned error: %v", err)
 	}
@@ -204,6 +201,20 @@ func TestInputToJSON_Null(t *testing.T) {
 
 	if err.Error() != "input must be a JSON string or object" {
 		t.Fatalf("error = %q, want %q", err.Error(), "input must be a JSON string or object")
+	}
+}
+
+func TestValidateRequestFromArgs_NullJSONString(t *testing.T) {
+	_, err := validateRequestFromArgs([]js.Value{
+		js.ValueOf("null"),
+	})
+
+	if err == nil {
+		t.Fatal("error = nil, want error")
+	}
+
+	if err.Error() != "input must be a JSON string or object" {
+		t.Fatalf("error = %q, want input error", err.Error())
 	}
 }
 

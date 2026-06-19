@@ -21,7 +21,7 @@ func finalizeJSON(out io.Writer, errOut io.Writer, outcomes []fileOutcome) error
 	enc.SetIndent("", "  ")
 
 	if err := enc.Encode(outcomes); err != nil {
-		fmt.Fprintln(errOut, red(fmt.Sprintf("failed to encode json: %v", err)))
+		_, _ = fmt.Fprintln(errOut, red("failed to encode json: "+err.Error()))
 		return err
 	}
 

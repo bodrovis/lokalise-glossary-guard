@@ -60,7 +60,6 @@ func TestExpandFiles_DirectFiles(t *testing.T) {
 		"one.csv",
 		"two.csv",
 	})
-
 	if err != nil {
 		t.Fatalf("expandFiles returned error: %v", err)
 	}
@@ -77,7 +76,6 @@ func TestExpandFiles_CommaSeparatedAndTrimmed(t *testing.T) {
 		"",
 		" , three.csv, ",
 	})
-
 	if err != nil {
 		t.Fatalf("expandFiles returned error: %v", err)
 	}
@@ -94,7 +92,6 @@ func TestExpandFiles_Deduplicates(t *testing.T) {
 		"one.csv",
 		"two.csv",
 	})
-
 	if err != nil {
 		t.Fatalf("expandFiles returned error: %v", err)
 	}
@@ -122,7 +119,6 @@ func TestExpandFiles_GlobMatchesFilesOnly(t *testing.T) {
 	files, err := expandFiles([]string{
 		filepath.Join(dir, "*.csv"),
 	})
-
 	if err != nil {
 		t.Fatalf("expandFiles returned error: %v", err)
 	}
@@ -146,7 +142,6 @@ func TestExpandFiles_GlobAndDirectDeduplicate(t *testing.T) {
 		a,
 		filepath.Join(dir, "*.csv"),
 	})
-
 	if err != nil {
 		t.Fatalf("expandFiles returned error: %v", err)
 	}
@@ -192,7 +187,6 @@ func TestWriteFixedFileIfNeeded_FixNoneDoesNothing(t *testing.T) {
 			FinalPath: finalPath,
 		},
 	})
-
 	if err != nil {
 		t.Fatalf("writeFixedFileIfNeeded returned error: %v", err)
 	}
@@ -218,7 +212,6 @@ func TestWriteFixedFileIfNeeded_NotFixedDoesNothing(t *testing.T) {
 			FinalPath: finalPath,
 		},
 	})
-
 	if err != nil {
 		t.Fatalf("writeFixedFileIfNeeded returned error: %v", err)
 	}
@@ -252,7 +245,6 @@ func TestWriteFixedFileIfNeeded_WritesFixedFile(t *testing.T) {
 			FinalPath: finalPath,
 		},
 	})
-
 	if err != nil {
 		t.Fatalf("writeFixedFileIfNeeded returned error: %v", err)
 	}
@@ -293,7 +285,6 @@ func TestWriteFixedFileIfNeeded_AlreadyFixedPathDoesNotDoublePostfix(t *testing.
 			FinalPath: finalPath,
 		},
 	})
-
 	if err != nil {
 		t.Fatalf("writeFixedFileIfNeeded returned error: %v", err)
 	}

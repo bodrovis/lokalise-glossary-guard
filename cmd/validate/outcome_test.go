@@ -242,7 +242,6 @@ func TestAggregateReturnCode_NilWhenNoErrors(t *testing.T) {
 		{Path: "ok.csv", Passed: 1},
 		{Path: "warn.csv", Warned: 1},
 	})
-
 	if err != nil {
 		t.Fatalf("aggregateReturnCode returned error: %v", err)
 	}
@@ -333,8 +332,7 @@ func TestPrintAndAggregate_SingleFile(t *testing.T) {
 	)
 
 	stdout := captureStdoutForOutcomeTest(t, func() {
-		hadOpErr, hadValFail, filesPassed, filesFailed, filesErrored =
-			printAndAggregate(outcomes, 1, time.Now())
+		hadOpErr, hadValFail, filesPassed, filesFailed, filesErrored = printAndAggregate(outcomes, 1, time.Now())
 	})
 
 	if hadOpErr {
@@ -412,8 +410,7 @@ func TestPrintAndAggregate_MultipleFiles(t *testing.T) {
 	)
 
 	stdout := captureStdoutForOutcomeTest(t, func() {
-		hadOpErr, hadValFail, filesPassed, filesFailed, filesErrored =
-			printAndAggregate(outcomes, 3, time.Now())
+		hadOpErr, hadValFail, filesPassed, filesFailed, filesErrored = printAndAggregate(outcomes, 3, time.Now())
 	})
 
 	if !hadOpErr {
