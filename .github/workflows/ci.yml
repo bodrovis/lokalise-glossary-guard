@@ -39,5 +39,8 @@ jobs:
 
     - name: Run WASM tests
       run: |
-        export PATH="$(go env GOROOT)/misc/wasm:$PATH"
-        GOOS=js GOARCH=wasm go test -shuffle=on -count=1 ./wasm
+        GOOS=js GOARCH=wasm go test \
+          -exec="$(go env GOROOT)/lib/wasm/go_js_wasm_exec" \
+          -shuffle=on \
+          -count=1 \
+          ./wasm
