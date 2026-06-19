@@ -2,6 +2,8 @@
 
 ![GitHub Release](https://img.shields.io/github/v/release/bodrovis/lokalise-glossary-guard)
 ![CI](https://github.com/bodrovis/lokalise-glossary-guard/actions/workflows/ci.yml/badge.svg)
+[![Code Coverage](https://qlty.sh/gh/bodrovis/projects/lokalise-glossary-guard/coverage.svg)](https://qlty.sh/gh/bodrovis/projects/lokalise-glossary-guard)
+[![Maintainability](https://qlty.sh/gh/bodrovis/projects/lokalise-glossary-guard/maintainability.svg)](https://qlty.sh/gh/bodrovis/projects/lokalise-glossary-guard)
 
 **Lokalise glossary guard** (LGG) is a lightweight command-line tool designed to validate and fix CSV files before uploading them to Lokalise as glossaries.
 
