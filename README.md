@@ -7,6 +7,8 @@
 
 It helps catch common formatting issues early (wrong separators, missing headers, or encoding problems) ensuring your glossary uploads go smoothly.
 
+> Find web version at https://lokalise-glossary-guard.web.app/.
+
 ## Usage
 
 ```
@@ -87,7 +89,7 @@ Each glossary CSV file is validated sequentially through the following checks:
 | 13 | **`warn-duplicate-term-values`** | Checks that `term` values are unique (case-sensitive). |
 | 14 | **`warn-orphan-locale-descriptions`** | Prevents `_description` columns without corresponding language columns. |
 | 15 | **`no-invalid-flags`** | Validates flag columns (`casesensitive`, `translatable`, `forbidden`) contain only `yes`/`no` values. |
-| 15 | **`no-forbidden-non-translatable-terms`** | Checks there are no terms that are both non-translatable and forbidden. |
+| 16 | **`no-forbidden-non-translatable-terms`** | Checks there are no terms that are both non-translatable and forbidden. |
 
 ## Guidelines for creating glossary CSV files
 

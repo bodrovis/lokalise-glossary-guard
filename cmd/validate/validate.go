@@ -3,7 +3,6 @@ package validate
 import (
 	"fmt"
 	"os"
-	"runtime"
 
 	"github.com/spf13/cobra"
 
@@ -12,22 +11,13 @@ import (
 	"github.com/bodrovis/lokalise-glossary-guard-core/pkg/checks"
 )
 
-var (
-	files       []string
-	langs       []string
-	maxParallel uint
-	jsonOut     bool
-	noColor     bool
+func NewCmd() *cobra.Command {
+	opts := defaultCommandOptions()
 
-	doFix         bool
-	hardFailOnErr bool
-	rerunAfterFix bool
-)
-
-var validateCmd = &cobra.Command{
-	Use:   "validate",
-	Short: "Validate one or multiple glossary files; optionally apply auto-fixes to _fixed copies",
-	Long: `Run all registered checks against one or multiple glossary CSV files.
+	cmd := &cobra.Command{
+		Use:   "validate",
+		Short: "Validate one or multiple glossary files; optionally apply auto-fixes to _fixed copies",
+		Long: `Run all registered checks against one or multiple glossary CSV files.
 
 Examples:
   # Validate a single file (no fixes)
@@ -42,65 +32,73 @@ Examples:
   # Glob + parallel workers
   glossary-guard validate -f "data/*.csv" --parallel 8
 `,
-	PreRunE: validatePreRun,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return runValidate(cmd.Context(), validateRunConfig{
-			Files:       files,
-			Langs:       langs,
-			MaxParallel: maxParallel,
-			Options:     buildRunOptions(),
-			JSONOut:     jsonOut,
-		})
-	},
-}
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			return validatePreRun(&opts)
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runValidate(cmd.Context(), validateRunConfig{
+				Files:       opts.files,
+				Langs:       opts.langs,
+				MaxParallel: opts.maxParallel,
+				Options:     buildRunOptions(opts),
+				JSONOut:     opts.jsonOut,
+			})
+		},
+	}
 
-func Init(root *cobra.Command) {
-	validateCmd.Flags().StringSliceVarP(
-		&files,
+	cmd.Flags().StringSliceVarP(
+		&opts.files,
 		"files",
 		"f",
 		nil,
 		"Path(s) to glossary file(s) (comma-separated or repeatable, supports globs)",
 	)
 
-	validateCmd.Flags().UintVar(
-		&maxParallel,
+	cmd.Flags().UintVar(
+		&opts.maxParallel,
 		"parallel",
-		uint(runtime.GOMAXPROCS(0)),
+		opts.maxParallel,
 		"Maximum number of files to process in parallel",
 	)
 
-	validateCmd.Flags().StringSliceVarP(
-		&langs,
+	cmd.Flags().StringSliceVarP(
+		&opts.langs,
 		"langs",
 		"l",
 		nil,
 		"Language codes expected in header (e.g. en,fr,de or de_DE,pt-BR)",
 	)
 
-	validateCmd.Flags().BoolVar(&noColor, "no-color", false, "Disable colored output (also honored if NO_COLOR is set)")
-	validateCmd.Flags().BoolVar(&jsonOut, "json", false, "Output results as JSON (machine-readable)")
+	cmd.Flags().BoolVar(&opts.noColor, "no-color", false, "Disable colored output (also honored if NO_COLOR is set)")
+	cmd.Flags().BoolVar(&opts.jsonOut, "json", false, "Output results as JSON (machine-readable)")
 
-	validateCmd.Flags().BoolVar(&doFix, "fix", false, "Attempt auto-fixes (writes *_fixed.csv on change)")
-	validateCmd.Flags().BoolVar(&hardFailOnErr, "hard-fail-on-error", false, "Exit non-zero when any check returns ERROR")
-	validateCmd.Flags().BoolVar(&rerunAfterFix, "rerun-after-fix", true, "Re-run validation after a successful fix")
+	cmd.Flags().BoolVar(&opts.doFix, "fix", false, "Attempt auto-fixes (writes *_fixed.csv on change)")
+	cmd.Flags().BoolVar(&opts.hardFailOnErr, "hard-fail-on-error", false, "Exit non-zero when any check returns ERROR")
+	cmd.Flags().BoolVar(&opts.rerunAfterFix, "rerun-after-fix", true, "Re-run validation after a successful fix")
 
-	root.AddCommand(validateCmd)
+	return cmd
 }
 
-func validatePreRun(cmd *cobra.Command, args []string) error {
-	if len(files) == 0 {
+func Init(root *cobra.Command) {
+	root.AddCommand(NewCmd())
+}
+
+func validatePreRun(opts *commandOptions) error {
+	if len(opts.files) == 0 {
 		return fmt.Errorf("no files provided; use --files to specify one or more CSV files")
 	}
 
-	if !noColor && os.Getenv("NO_COLOR") != "" {
-		noColor = true
+	if !opts.noColor && os.Getenv("NO_COLOR") != "" {
+		opts.noColor = true
 	}
 
-	langs = guard.PreprocessLangs(langs)
+	// Color helpers still read package-level noColor.
+	noColor = opts.noColor
+
+	opts.langs = guard.PreprocessLangs(opts.langs)
 
 	var err error
-	files, err = expandFiles(files)
+	opts.files, err = expandFiles(opts.files)
 	if err != nil {
 		return err
 	}

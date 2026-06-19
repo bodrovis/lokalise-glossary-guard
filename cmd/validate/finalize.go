@@ -3,23 +3,32 @@ package validate
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"time"
 )
 
 func finalize(outcomes []fileOutcome, filesCount int, start time.Time, jsonOutput bool) error {
 	if jsonOutput {
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-
-		if err := enc.Encode(outcomes); err != nil {
-			fmt.Fprintln(os.Stderr, red(fmt.Sprintf("failed to encode json: %v", err)))
-			return err
-		}
-
-		return aggregateReturnCode(outcomes)
+		return finalizeJSON(os.Stdout, os.Stderr, outcomes)
 	}
 
+	return finalizeText(outcomes, filesCount, start)
+}
+
+func finalizeJSON(out io.Writer, errOut io.Writer, outcomes []fileOutcome) error {
+	enc := json.NewEncoder(out)
+	enc.SetIndent("", "  ")
+
+	if err := enc.Encode(outcomes); err != nil {
+		fmt.Fprintln(errOut, red(fmt.Sprintf("failed to encode json: %v", err)))
+		return err
+	}
+
+	return aggregateReturnCode(outcomes)
+}
+
+func finalizeText(outcomes []fileOutcome, filesCount int, start time.Time) error {
 	hadOpErr, hadValFail, _, _, _ := printAndAggregate(outcomes, filesCount, start)
 
 	if hadOpErr {

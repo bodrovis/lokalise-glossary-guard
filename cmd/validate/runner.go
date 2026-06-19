@@ -2,6 +2,7 @@ package validate
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"runtime"
@@ -68,6 +69,11 @@ func runFiles(
 		for i, p := range files {
 			select {
 			case <-ctx.Done():
+				for j := i; j < len(files); j++ {
+					var b strings.Builder
+					renderFileHeader(&b, j, files[j], sep, opts)
+					outcomes[j] = fileOpErrorOutcome(j, files[j], &b, ctx.Err(), sep)
+				}
 				return
 			case jobs <- job{idx: i, path: p}:
 			}
@@ -96,10 +102,14 @@ func runOneFile(ctx context.Context, i int, path string, langs []string, sep str
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return fileReadErrorOutcome(i, path, &b, err, sep)
+		return fileOpErrorOutcome(i, path, &b, err, sep)
 	}
 
 	resp, validationErr := guard.ValidateBytes(ctx, buildValidateRequest(path, data, langs, opts))
+	if errors.Is(validationErr, context.Canceled) {
+		return fileOpErrorOutcome(i, path, &b, validationErr, sep)
+	}
+
 	if validationErr != nil {
 		// Validation-level errors are represented in resp.
 		// Keep old CLI behavior: don't print an extra raw Go error here.

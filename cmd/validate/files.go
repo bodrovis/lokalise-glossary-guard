@@ -59,7 +59,11 @@ func writeFixedFileIfNeeded(
 		return nil
 	}
 
-	outPath := withFixedPostfix(resp.Summary.FinalPath)
+	outPath, err := fixedOutputPath(resp)
+	if err != nil {
+		fmt.Fprintf(b, "%s writing fixed file: %v\n", red("ERROR"), err)
+		return err
+	}
 
 	if err := os.WriteFile(outPath, resp.FixedData, 0o644); err != nil {
 		fmt.Fprintf(b, "%s writing fixed file: %v\n", red("ERROR"), err)
@@ -80,3 +84,14 @@ func withFixedPostfix(p string) string {
 }
 
 func hasGlob(s string) bool { return strings.ContainsAny(s, "*?[]") }
+
+func fixedOutputPath(resp guard.ValidateResponse) (string, error) {
+	p := resp.Summary.FinalPath
+	if p == "" {
+		p = resp.Path
+	}
+	if p == "" {
+		return "", fmt.Errorf("fixed output path is empty")
+	}
+	return withFixedPostfix(p), nil
+}

@@ -22,6 +22,10 @@ and Y/N flags catching the most common issues (wrong delimiter, missing term/des
 		SilenceUsage:     true,
 		SilenceErrors:    true,
 		TraverseChildren: true,
+		Args:             cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
+		},
 	}
 
 	validate.Init(rootCmd)

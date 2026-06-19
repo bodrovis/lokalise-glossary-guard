@@ -82,14 +82,6 @@ func renderCheckOutcomes(b *strings.Builder, sum guard.Summary) {
 	}
 }
 
-func checkTag(name string) string {
-	if cu, ok := checks.Lookup(name); ok && cu.FailFast() {
-		return "CRIT"
-	}
-
-	return "NORM"
-}
-
 func renderFileHeader(b *strings.Builder, i int, path string, sep string, opts checks.RunOptions) {
 	if i > 0 {
 		b.WriteByte('\n')

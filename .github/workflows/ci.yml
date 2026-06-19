@@ -14,7 +14,9 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v6.0.2
-
+      with:
+        persist-credentials: false
+        
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
@@ -22,4 +24,20 @@ jobs:
         cache: false
         
     - name: Run tests
-      run: go test -shuffle=on -count=1 -race ./...
+      run: go test -shuffle=on -count=1 -race ./... -v -coverprofile=coverage.out
+
+    - uses: qltysh/qlty-action/coverage@v2.2.0
+      with:
+        token: ${{ secrets.QLTY_COVERAGE_TOKEN }}
+        files: coverage.out
+        strip-prefix: github.com/bodrovis/lokalise-glossary-guard-core/
+
+    - name: Set up Node
+      uses: actions/setup-node@v6
+      with:
+        node-version: 22
+
+    - name: Run WASM tests
+      run: |
+        export PATH="$(go env GOROOT)/misc/wasm:$PATH"
+        GOOS=js GOARCH=wasm go test -shuffle=on -count=1 ./cmd/wasm

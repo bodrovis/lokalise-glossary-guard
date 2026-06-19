@@ -1,6 +1,8 @@
 package validate
 
 var (
+	noColor bool
+
 	clrReset  = "\x1b[0m"
 	clrRed    = "\x1b[31m"
 	clrGreen  = "\x1b[32m"
@@ -42,7 +44,9 @@ func colorStatus(s string) string {
 		return green(s)
 	case "WARN":
 		return yellow(s)
+	case "FAIL", "ERROR":
+		return red(s)
 	default:
-		return red(s) // FAIL/ERROR
+		return s
 	}
 }
