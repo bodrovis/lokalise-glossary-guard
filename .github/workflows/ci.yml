@@ -26,7 +26,7 @@ jobs:
     - name: Run tests
       run: go test -shuffle=on -count=1 -race ./... -v -coverprofile=coverage.out
 
-    - uses: qltysh/qlty-action/coverage@v2.2.0
+    - uses: qltysh/qlty-action/coverage@v2.2.1
       with:
         token: ${{ secrets.QLTY_COVERAGE_TOKEN }}
         files: coverage.out
