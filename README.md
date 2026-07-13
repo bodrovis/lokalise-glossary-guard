@@ -142,13 +142,71 @@ go test -shuffle=on -count=1 -race ./...
 
 ## Release verification
 
-Each release includes extra verification artifacts:
+Each release includes additional verification artifacts:
 
-- `*_checksums.txt` — SHA256 checksums for release files
-- `*_checksums.txt.sigstore.json` — Cosign signature bundle for the checksum file
-- `*.sbom.json` — SBOM files generated for release archives
+* `*_checksums.txt` — SHA-256 checksums for all release files
+* `*_checksums.txt.sigstore.json` — keyless Cosign signature bundle for the checksum file
+* `*.sbom.json` — SBOM files generated for the release archives
 
-GitHub Artifact Attestations are available at: [github.com/bodrovis/lokalise-glossary-guard/attestations](https://github.com/bodrovis/lokalise-glossary-guard/attestations).
+GitHub Artifact Attestations are also published for release files and can be viewed on the [repository attestations page](https://github.com/bodrovis/lokalise-glossary-guard/attestations).
+
+To verify a release, install [Cosign](https://github.com/sigstore/cosign) and the [GitHub CLI](https://cli.github.com/).
+
+Set the release tag you want to verify:
+
+```bash
+TAG="v1.0.0"
+VERSION="${TAG#v}"
+REPO="bodrovis/lokalise-glossary-guard"
+```
+
+Download all release assets into a new directory:
+
+```bash
+mkdir -p "lokalise-glossary-guard-${TAG}"
+cd "lokalise-glossary-guard-${TAG}"
+
+gh release download "$TAG" \
+  --repo "$REPO"
+```
+
+Locate the checksum manifest and its Cosign bundle:
+
+```bash
+CHECKSUMS_FILE="lokalise-glossary-guard_${VERSION}_checksums.txt"
+SIGNATURE_FILE="${CHECKSUMS_FILE}.sigstore.json"
+```
+
+First, verify that the checksum manifest was signed by the expected GitHub Actions workflow:
+
+```bash
+cosign verify-blob \
+  --bundle "$SIGNATURE_FILE" \
+  --certificate-identity "https://github.com/${REPO}/.github/workflows/goreleaser.yml@refs/tags/${TAG}" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  "$CHECKSUMS_FILE"
+```
+
+Then verify that the downloaded release files match the signed checksums:
+
+```bash
+sha256sum --check "$CHECKSUMS_FILE"
+```
+
+Finally, verify the GitHub Artifact Attestation for a release archive. For example, for the Linux x86-64 archive:
+
+```bash
+gh attestation verify \
+  "lokalise-glossary-guard_${VERSION}_Linux_x86_64.tar.gz" \
+  --repo "$REPO" \
+  --signer-workflow "$REPO/.github/workflows/goreleaser.yml"
+```
+
+All three commands must complete successfully:
+
+1. `cosign verify-blob` confirms that the checksum manifest was signed by the expected tagged GitHub Actions workflow.
+2. `sha256sum` confirms that the downloaded release files have not been modified.
+3. `gh attestation verify` confirms the provenance and integrity of the selected release artifact.
 
 ## License
 

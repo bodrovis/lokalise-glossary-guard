@@ -1,59 +1,136 @@
-name: goreleaser
+name: GoReleaser
 
 on:
   push:
     tags:
       - "v*"
 
-permissions:
-  contents: write
-  id-token: write
-  attestations: write
-  artifact-metadata: write
+permissions: {}
+
+concurrency:
+  group: goreleaser-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  goreleaser:
+  release:
+    name: Build, sign, and publish release
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+      id-token: write
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7.0.0
+      # v7.0.0
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 0
           persist-credentials: false
 
+      # v6.5.0
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
           go-version-file: go.mod
-          check-latest: true
-          cache: false
+          check-latest: false
+          cache: true
 
-      - name: Install UPX
-        run: sudo apt-get update && sudo apt-get install -y upx
+      - name: Verify Go modules
+        run: go mod verify
 
-      - name: Install Syft
-        uses: anchore/sbom-action/download-syft@v0
+      - name: Run tests
+        run: go test ./...
 
-      - name: Install Cosign
-        uses: sigstore/cosign-installer@v4.1.2
-
-      - name: Export GOROOT
-        run: echo "GOROOT=$(go env GOROOT)" >> "$GITHUB_ENV"
-
-      - name: Copy wasm_exec.js
+      - name: Install verified UPX
         shell: bash
         run: |
+          set -euo pipefail
+
+          UPX_VERSION="5.2.0"
+          UPX_ARCHIVE="upx-${UPX_VERSION}-amd64_linux.tar.xz"
+          UPX_SHA256="3db5d3294707439db97866feab8d75d800f028f48481a40547411824da4288a1"
+
+          TMP_DIR="$(mktemp -d)"
+          trap 'rm -rf "$TMP_DIR"' EXIT
+
+          curl \
+            --fail \
+            --location \
+            --silent \
+            --show-error \
+            --output "$TMP_DIR/$UPX_ARCHIVE" \
+            "https://github.com/upx/upx/releases/download/v${UPX_VERSION}/${UPX_ARCHIVE}"
+
+          echo "${UPX_SHA256}  $TMP_DIR/$UPX_ARCHIVE" |
+            sha256sum --check -
+
+          tar \
+            -xJf "$TMP_DIR/$UPX_ARCHIVE" \
+            -C "$TMP_DIR"
+
+          sudo install \
+            -m 0755 \
+            "$TMP_DIR/upx-${UPX_VERSION}-amd64_linux/upx" \
+            /usr/local/bin/upx
+
+          upx --version
+
+      # v0.24.0
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610
+
+      # v4.1.2
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6
+
+      - name: Prepare wasm_exec.js
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Keep the generated build directory out of GoReleaser's
+          # Git dirty-state check without modifying .gitignore.
+          printf '\n/build/\n' >> .git/info/exclude
+
           mkdir -p build/wasm
 
-          if [ -f "$(go env GOROOT)/lib/wasm/wasm_exec.js" ]; then
-            cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" build/wasm/wasm_exec.js
+          GOROOT="$(go env GOROOT)"
+
+          if [ -f "$GOROOT/lib/wasm/wasm_exec.js" ]; then
+            cp \
+              "$GOROOT/lib/wasm/wasm_exec.js" \
+              build/wasm/wasm_exec.js
+          elif [ -f "$GOROOT/misc/wasm/wasm_exec.js" ]; then
+            cp \
+              "$GOROOT/misc/wasm/wasm_exec.js" \
+              build/wasm/wasm_exec.js
           else
-            cp "$(go env GOROOT)/misc/wasm/wasm_exec.js" build/wasm/wasm_exec.js
+            echo "wasm_exec.js was not found under GOROOT: $GOROOT" >&2
+            exit 1
           fi
 
+          test -s build/wasm/wasm_exec.js
+          ls -lah build/wasm/wasm_exec.js
+
+      - name: Check Git state
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          status="$(git status --short)"
+
+          if [ -n "$status" ]; then
+            echo "Git working tree is dirty:" >&2
+            echo "$status" >&2
+            exit 1
+          fi
+
+          echo "Git working tree is clean."
+
+      # v7.2.3
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v7.2.2
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94
         with:
           distribution: goreleaser
           version: "~> v2"
@@ -61,11 +138,73 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Find checksum file
+      - name: Prepare checksum manifest
         shell: bash
-        run: echo "CHECKSUMS_FILE=$(ls dist/*_checksums.txt)" >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
 
-      - name: Generate artifact attestation
-        uses: actions/attest@v4.1.0
+          mapfile -t checksum_files < <(
+            find dist \
+              -maxdepth 1 \
+              -type f \
+              -name "*_checksums.txt" \
+              -print
+          )
+
+          if [ "${#checksum_files[@]}" -ne 1 ]; then
+            echo "Expected exactly one checksum manifest, found ${#checksum_files[@]}:" >&2
+            printf '%s\n' "${checksum_files[@]}" >&2
+            exit 1
+          fi
+
+          mkdir -p _attestation
+          cp "${checksum_files[0]}" _attestation/checksums.txt
+
+          echo "== Checksum manifest =="
+          cat _attestation/checksums.txt
+
+      # v7.0.1
+      - name: Upload checksum manifest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          subject-checksums: ${{ env.CHECKSUMS_FILE }}
+          name: release-checksums
+          path: _attestation/checksums.txt
+          if-no-files-found: error
+          retention-days: 1
+
+  attest:
+    name: Generate release attestations
+    runs-on: ubuntu-latest
+
+    needs:
+      - release
+
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+
+    steps:
+      # v8.0.1
+      - name: Download checksum manifest
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: release-checksums
+          path: _attestation
+
+      - name: Validate checksum manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -s _attestation/checksums.txt
+
+          echo "== Files being attested =="
+          cat _attestation/checksums.txt
+
+      # v4.1.1
+      - name: Generate artifact attestations
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763
+        with:
+          subject-checksums: _attestation/checksums.txt

@@ -4,7 +4,6 @@ project_name: lokalise-glossary-guard
 
 before:
   hooks:
-    - go mod tidy
     - go mod verify
 
 builds:

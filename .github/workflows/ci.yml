@@ -12,30 +12,40 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v7.0.0
+    # v7.0.0
+    - name: Checkout source commit
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       with:
         persist-credentials: false
         
+    # v6.5.0
     - name: Set up Go
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
       with:
-        go-version: '1.26'
+        go-version-file: go.mod
+        check-latest: false
         cache: false
         
+    - name: Check Go modules
+      run: |
+        set -euo pipefail
+        go mod tidy
+        git diff --exit-code -- go.mod go.sum
+        go mod verify
+
     - name: Run tests
       run: go test -shuffle=on -count=1 -race ./... -v -coverprofile=coverage.out
 
-    - uses: qltysh/qlty-action/coverage@v2.2.1
+    - uses: qltysh/qlty-action/coverage@08a0a862c159eae9b9003081da6663d96efef637
       with:
         token: ${{ secrets.QLTY_COVERAGE_TOKEN }}
         files: coverage.out
         strip-prefix: github.com/bodrovis/lokalise-glossary-guard/
 
-    - name: Set up Node
-      uses: actions/setup-node@v6
+    # v6.4.0
+    - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
       with:
-        node-version: 22
+        node-version: 24
 
     - name: Run WASM tests
       run: |
