@@ -197,7 +197,7 @@ func TestFinalizeJSON_ReturnsEncodeError(t *testing.T) {
 		t.Fatalf("error = %q, want write failed", err.Error())
 	}
 
-	want := "failed to encode json: write failed"
+	want := "failed to encode json: jsontext: write error"
 	if !strings.Contains(errOut.String(), want) {
 		t.Fatalf("stderr = %q, want it to contain %q", errOut.String(), want)
 	}

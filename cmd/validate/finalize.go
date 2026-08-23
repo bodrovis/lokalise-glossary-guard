@@ -1,7 +1,8 @@
 package validate
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	json "encoding/json/v2"
 	"fmt"
 	"io"
 	"os"
@@ -17,11 +18,17 @@ func finalize(outcomes []fileOutcome, filesCount int, start time.Time, jsonOutpu
 }
 
 func finalizeJSON(out io.Writer, errOut io.Writer, outcomes []fileOutcome) error {
-	enc := json.NewEncoder(out)
-	enc.SetIndent("", "  ")
-
-	if err := enc.Encode(outcomes); err != nil {
+	if err := json.MarshalWrite(
+		out,
+		outcomes,
+		jsontext.WithIndent("  "),
+	); err != nil {
 		_, _ = fmt.Fprintln(errOut, red("failed to encode json: "+err.Error()))
+		return err
+	}
+
+	if _, err := io.WriteString(out, "\n"); err != nil {
+		_, _ = fmt.Fprintln(errOut, red("failed to write json: "+err.Error()))
 		return err
 	}
 

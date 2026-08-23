@@ -2,7 +2,7 @@ package guard
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 
 	_ "github.com/bodrovis/lokalise-glossary-guard-core/pkg/checks/all"

@@ -3,7 +3,7 @@
 package main
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"testing"
 
 	"github.com/bodrovis/lokalise-glossary-guard/pkg/guard"
