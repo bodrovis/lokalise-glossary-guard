@@ -11,18 +11,23 @@ import (
 
 type wasmValidateEnvelope struct {
 	OK     bool                    `json:"ok"`
-	Result *guard.ValidateResponse `json:"result,omitempty"`
-	Error  string                  `json:"error,omitempty"`
+	Result *guard.ValidateResponse `json:"result,omitzero"`
+	Error  string                  `json:"error,omitzero"`
 }
 
 func encodeEnvelope(resp wasmValidateEnvelope) string {
 	data, err := json.Marshal(resp)
-	if err != nil {
-		fallback, _ := json.Marshal(errorEnvelope(fmt.Sprintf("failed to encode response: %v", err)))
-		return string(fallback)
+	if err == nil {
+		return string(data)
 	}
 
-	return string(data)
+	fallback, _ := json.Marshal(
+		errorEnvelope(
+			fmt.Sprintf("failed to encode response: %v", err),
+		),
+	)
+
+	return string(fallback)
 }
 
 func errorEnvelope(msg string) wasmValidateEnvelope {

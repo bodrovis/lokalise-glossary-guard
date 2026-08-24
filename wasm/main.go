@@ -2,13 +2,13 @@
 
 package main
 
-import (
-	"syscall/js"
-)
+import "syscall/js"
 
 func main() {
-	js.Global().Set("validateGlossaryGuard", js.FuncOf(validateGlossaryGuard))
+	validate := js.FuncOf(validateGlossaryGuard)
 
-	// Keep WASM alive.
+	js.Global().Set("validateGlossaryGuard", validate)
+
+	// Keep WASM alive while the exported JS function is available.
 	select {}
 }

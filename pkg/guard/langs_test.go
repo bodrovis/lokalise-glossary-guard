@@ -8,6 +8,8 @@ import (
 )
 
 func TestPreprocessLangs(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		in   []string
@@ -72,10 +74,17 @@ func TestPreprocessLangs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := guard.PreprocessLangs(tt.in)
 
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Fatalf("PreprocessLangs(%#v) = %#v, want %#v", tt.in, got, tt.want)
+				t.Fatalf(
+					"PreprocessLangs(%#v) = %#v, want %#v",
+					tt.in,
+					got,
+					tt.want,
+				)
 			}
 		})
 	}

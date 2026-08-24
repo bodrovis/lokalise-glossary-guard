@@ -7,12 +7,14 @@ import (
 	"github.com/bodrovis/lokalise-glossary-guard-core/pkg/validator"
 )
 
-func responseFromSummary(path string, coreSummary validator.Summary, err error) ValidateResponse {
-	summary := newSummary(coreSummary)
-
+func responseFromSummary(
+	path string,
+	coreSummary validator.Summary,
+	err error,
+) ValidateResponse {
 	resp := ValidateResponse{
 		Path:    path,
-		Summary: summary,
+		Summary: newSummary(coreSummary),
 	}
 
 	if err != nil && !errors.Is(err, context.Canceled) {
@@ -26,22 +28,31 @@ func responseFromSummary(path string, coreSummary validator.Summary, err error) 
 }
 
 func applyStatus(resp *ValidateResponse) {
+	resp.Passed = false
+	resp.Warned = false
+	resp.Failed = false
+
+	resp.Errored = resp.Summary.Errors > 0 || resp.Error != ""
+
 	switch {
-	case resp.Summary.Fail > 0 || resp.Summary.Errors > 0 || resp.Error != "":
+	case resp.Summary.Fail > 0 || resp.Errored:
 		resp.Status = StatusFailed
 		resp.Failed = true
+
 	case resp.Summary.Warn > 0:
 		resp.Status = StatusPassedWithWarnings
 		resp.Warned = true
+
 	default:
 		resp.Status = StatusPassed
 		resp.Passed = true
 	}
-
-	resp.Errored = resp.Summary.Errors > 0 || resp.Error != ""
 }
 
-func applyFixData(resp *ValidateResponse, coreSummary validator.Summary) {
+func applyFixData(
+	resp *ValidateResponse,
+	coreSummary validator.Summary,
+) {
 	if !coreSummary.AppliedFixes {
 		return
 	}

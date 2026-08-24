@@ -10,6 +10,8 @@ import (
 )
 
 func TestGenerateDocs(t *testing.T) {
+	t.Parallel()
+
 	dir := filepath.Join(t.TempDir(), "docs")
 
 	root := &cobra.Command{
@@ -63,14 +65,28 @@ func assertFileExists(t *testing.T, path string) {
 }
 
 func TestGenerateDocs_ReturnsMkdirError(t *testing.T) {
+	t.Parallel()
+
 	file := filepath.Join(t.TempDir(), "not-a-dir")
 
 	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
-		t.Fatalf("os.WriteFile failed: %v", err)
+		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	err := generateDocs(&cobra.Command{Use: "testcmd"}, filepath.Join(file, "docs"))
+	dir := filepath.Join(file, "docs")
+
+	err := generateDocs(
+		&cobra.Command{Use: "testcmd"},
+		dir,
+	)
 	if err == nil {
-		t.Fatal("error = nil, want mkdir error")
+		t.Fatal("generateDocs() error = nil, want non-nil")
+	}
+
+	if !strings.Contains(err.Error(), "create docs directory") {
+		t.Fatalf(
+			"generateDocs() error = %q, want mkdir context",
+			err,
+		)
 	}
 }

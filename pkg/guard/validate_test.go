@@ -6,11 +6,15 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/bodrovis/lokalise-glossary-guard/pkg/guard"
 )
 
 func TestValidateBytes_ValidDataPasses(t *testing.T) {
+	t.Parallel()
+
 	resp, err := guard.ValidateBytes(context.Background(), guard.ValidateRequest{
 		Path: "glossary.csv",
 		Data: []byte(validCSV()),
@@ -44,6 +48,7 @@ func TestValidateBytes_ValidDataPasses(t *testing.T) {
 }
 
 func TestValidateBytes_UsesTextWhenDataIsNil(t *testing.T) {
+	t.Parallel()
 	resp, err := guard.ValidateBytes(context.Background(), guard.ValidateRequest{
 		Path: "glossary.csv",
 		Text: validCSV(),
@@ -57,6 +62,7 @@ func TestValidateBytes_UsesTextWhenDataIsNil(t *testing.T) {
 }
 
 func TestValidateBytes_PrefersDataOverText(t *testing.T) {
+	t.Parallel()
 	resp, err := guard.ValidateBytes(context.Background(), guard.ValidateRequest{
 		Path: "glossary.csv",
 
@@ -75,6 +81,7 @@ func TestValidateBytes_PrefersDataOverText(t *testing.T) {
 }
 
 func TestValidateBytes_InvalidCSVFailsWithoutGoError(t *testing.T) {
+	t.Parallel()
 	resp, err := guard.ValidateBytes(context.Background(), guard.ValidateRequest{
 		Path: "glossary.csv",
 		Data: []byte("term,description\nhello,world\n"),
@@ -117,6 +124,7 @@ func TestValidateBytes_EmptyDataFails(t *testing.T) {
 }
 
 func TestValidateBytes_InvalidUTF8Fails(t *testing.T) {
+	t.Parallel()
 	resp, err := guard.ValidateBytes(context.Background(), guard.ValidateRequest{
 		Path: "glossary.csv",
 		Data: []byte{0xff, 0xfe, 0xfd},
@@ -134,6 +142,7 @@ func TestValidateBytes_InvalidUTF8Fails(t *testing.T) {
 }
 
 func TestValidateBytes_InvalidExtensionFails(t *testing.T) {
+	t.Parallel()
 	resp, err := guard.ValidateBytes(context.Background(), guard.ValidateRequest{
 		Path: "glossary.txt",
 		Data: []byte(validCSV()),
@@ -151,6 +160,8 @@ func TestValidateBytes_InvalidExtensionFails(t *testing.T) {
 }
 
 func TestValidateBytes_FixReturnsFixedDataAndText(t *testing.T) {
+	t.Parallel()
+
 	resp, err := guard.ValidateBytes(context.Background(), guard.ValidateRequest{
 		Path: "glossary.csv",
 		Data: []byte(csvWithEmptyLine()),
@@ -186,6 +197,8 @@ func TestValidateBytes_FixReturnsFixedDataAndText(t *testing.T) {
 }
 
 func TestValidateBytes_FixDisabledDoesNotReturnFixedData(t *testing.T) {
+	t.Parallel()
+
 	resp, err := guard.ValidateBytes(context.Background(), guard.ValidateRequest{
 		Path: "glossary.csv",
 		Data: []byte(csvWithEmptyLine()),
@@ -209,6 +222,8 @@ func TestValidateBytes_FixDisabledDoesNotReturnFixedData(t *testing.T) {
 }
 
 func TestValidateBytes_FixWithExplicitRerunAfterFixFalse(t *testing.T) {
+	t.Parallel()
+
 	rerunAfterFix := false
 
 	resp, err := guard.ValidateBytes(context.Background(), guard.ValidateRequest{
@@ -235,6 +250,8 @@ func TestValidateBytes_FixWithExplicitRerunAfterFixFalse(t *testing.T) {
 }
 
 func TestValidateBytesJSON_ValidResponse(t *testing.T) {
+	t.Parallel()
+
 	raw, err := guard.ValidateBytesJSON(context.Background(), guard.ValidateRequest{
 		Path: "glossary.csv",
 		Data: []byte(validCSV()),
@@ -253,32 +270,39 @@ func TestValidateBytesJSON_ValidResponse(t *testing.T) {
 }
 
 func TestValidateBytesJSON_FixedDataIsNotSerialized(t *testing.T) {
-	raw, err := guard.ValidateBytesJSON(context.Background(), guard.ValidateRequest{
-		Path: "glossary.csv",
-		Data: []byte(csvWithEmptyLine()),
-		Fix:  true,
-	})
+	t.Parallel()
+
+	raw, err := guard.ValidateBytesJSON(
+		context.Background(),
+		guard.ValidateRequest{
+			Path: "glossary.csv",
+			Data: []byte(csvWithEmptyLine()),
+			Fix:  true,
+		},
+	)
 	if err != nil {
-		t.Fatalf("ValidateBytesJSON returned error: %v", err)
+		t.Fatalf("ValidateBytesJSON() error = %v", err)
 	}
 
 	var body map[string]any
 	if err := json.Unmarshal(raw, &body); err != nil {
-		t.Fatalf("json.Unmarshal failed: %v\nraw: %s", err, raw)
+		t.Fatalf("json.Unmarshal() error = %v\nraw: %s", err, raw)
 	}
 
 	if _, ok := body["fixed_data"]; ok {
-		t.Fatalf("JSON contains fixed_data, want it omitted: %s", raw)
+		t.Fatalf("JSON contains fixed_data: %s", raw)
 	}
 
-	fixed, ok := body["fixed"].(bool)
-	if !ok || !fixed {
+	if body["fixed"] != true {
 		t.Fatalf("fixed = %#v, want true", body["fixed"])
 	}
 
 	fixedText, ok := body["fixed_text"].(string)
 	if !ok || fixedText == "" {
-		t.Fatalf("fixed_text = %#v, want non-empty string", body["fixed_text"])
+		t.Fatalf(
+			"fixed_text = %#v, want non-empty string",
+			body["fixed_text"],
+		)
 	}
 }
 
@@ -298,6 +322,70 @@ func TestValidateBytesJSON_ContextCanceledReturnsError(t *testing.T) {
 	if raw != nil {
 		t.Fatalf("raw = %s, want nil", raw)
 	}
+}
+
+func TestValidateBytes_EmptyDataStillTakesPrecedenceOverText(t *testing.T) {
+	t.Parallel()
+
+	resp, err := guard.ValidateBytes(
+		context.Background(),
+		guard.ValidateRequest{
+			Path: "glossary.csv",
+			Data: []byte{},
+			Text: validCSV(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("ValidateBytes() error = %v", err)
+	}
+
+	assertStatus(t, resp, guard.StatusFailed)
+
+	if resp.Summary.Fail == 0 {
+		t.Fatalf("Summary.Fail = %d, want > 0", resp.Summary.Fail)
+	}
+}
+
+func TestValidateBytesJSON_DeadlineExceededIsReturnedAsJSON(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(
+			context.Background(),
+			time.Hour,
+		)
+		defer cancel()
+
+		synctest.Sleep(time.Hour)
+
+		raw, err := guard.ValidateBytesJSON(
+			ctx,
+			guard.ValidateRequest{
+				Path: "glossary.csv",
+				Data: []byte(validCSV()),
+			},
+		)
+		if err != nil {
+			t.Fatalf("ValidateBytesJSON() error = %v", err)
+		}
+
+		var resp guard.ValidateResponse
+		if err := json.Unmarshal(raw, &resp); err != nil {
+			t.Fatalf("json.Unmarshal() error = %v", err)
+		}
+
+		if resp.Error != context.DeadlineExceeded.Error() {
+			t.Fatalf(
+				"Error = %q, want %q",
+				resp.Error,
+				context.DeadlineExceeded.Error(),
+			)
+		}
+
+		assertStatus(t, resp, guard.StatusFailed)
+
+		if !resp.Errored {
+			t.Fatal("Errored = false, want true")
+		}
+	})
 }
 
 func validCSV() string {

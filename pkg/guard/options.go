@@ -1,21 +1,18 @@
 package guard
 
-import (
-	"github.com/bodrovis/lokalise-glossary-guard-core/pkg/checks"
-)
+import "github.com/bodrovis/lokalise-glossary-guard-core/pkg/checks"
 
 func runOptions(req ValidateRequest) checks.RunOptions {
-	opts := checks.RunOptions{
-		FixMode:       checks.FixNone,
+	fixMode := checks.FixNone
+	if req.Fix {
+		fixMode = checks.FixIfNotPass
+	}
+
+	return checks.RunOptions{
+		FixMode:       fixMode,
 		RerunAfterFix: rerunAfterFix(req),
 		HardFailOnErr: req.HardFailOnErr,
 	}
-
-	if req.Fix {
-		opts.FixMode = checks.FixIfNotPass
-	}
-
-	return opts
 }
 
 func requestData(req ValidateRequest) []byte {

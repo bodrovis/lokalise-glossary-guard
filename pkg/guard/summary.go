@@ -6,17 +6,17 @@ import (
 )
 
 func newSummary(sum validator.Summary) Summary {
-	outcomes := make([]Outcome, 0, len(sum.Outcomes))
+	outcomes := make([]Outcome, len(sum.Outcomes))
 
-	for _, o := range sum.Outcomes {
-		outcomes = append(outcomes, Outcome{
+	for i, o := range sum.Outcomes {
+		outcomes[i] = Outcome{
 			Name:     o.Result.Name,
 			Status:   string(o.Result.Status),
 			Message:  o.Result.Message,
 			Critical: isCriticalCheck(o.Result.Name),
 			Changed:  o.Final.DidChange,
 			Note:     o.Final.Note,
-		})
+		}
 	}
 
 	return Summary{
@@ -35,6 +35,6 @@ func newSummary(sum validator.Summary) Summary {
 }
 
 func isCriticalCheck(name string) bool {
-	cu, ok := checks.Lookup(name)
-	return ok && cu.FailFast()
+	check, ok := checks.Lookup(name)
+	return ok && check.FailFast()
 }

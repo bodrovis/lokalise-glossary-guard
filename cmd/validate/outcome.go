@@ -3,7 +3,6 @@ package validate
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/bodrovis/lokalise-glossary-guard/pkg/guard"
 )
@@ -16,8 +15,8 @@ type fileOutcome struct {
 	Warned     int            `json:"warned"`
 	Failed     int            `json:"failed"`
 	Errored    int            `json:"errored"`
-	HadOpErr   bool           `json:"had_op_err"`
-	HadValFail bool           `json:"had_val_fail"`
+	HadOpErr   bool           `json:"-"`
+	HadValFail bool           `json:"-"`
 	Summary    *guard.Summary `json:"summary,omitempty"`
 }
 
@@ -39,8 +38,19 @@ func applyGuardResponse(oc *fileOutcome, resp guard.ValidateResponse) {
 	}
 }
 
-func fileOpErrorOutcome(i int, path string, b *strings.Builder, err error, sep string) fileOutcome {
-	fmt.Fprintf(b, "%s: %v\n%s\n", red("ERROR"), err, sep)
+func (cfg fileRunConfig) opErrorOutcome(
+	i int,
+	path string,
+	b *strings.Builder,
+	err error,
+) fileOutcome {
+	fmt.Fprintf(
+		b,
+		"%s: %v\n%s\n",
+		cfg.Colors.red("ERROR"),
+		err,
+		cfg.Separator,
+	)
 
 	return fileOutcome{
 		Idx:      i,
@@ -49,45 +59,6 @@ func fileOpErrorOutcome(i int, path string, b *strings.Builder, err error, sep s
 		HadOpErr: true,
 		Output:   b.String(),
 	}
-}
-
-func aggregateReturnCode(outcomes []fileOutcome) error {
-	agg := aggregateOutcomes(outcomes)
-
-	if agg.HadOpErr {
-		return fmt.Errorf("one or more files could not be validated due to an error")
-	}
-	if agg.HadValFail {
-		return fmt.Errorf("validation failed")
-	}
-	return nil
-}
-
-func printAndAggregate(outcomes []fileOutcome, filesCount int, start time.Time) (
-	hadOpErr, hadValFail bool,
-	filesPassed, filesFailed, filesErrored int,
-) {
-	for _, oc := range outcomes {
-		if oc.Output != "" {
-			fmt.Print(oc.Output)
-		}
-	}
-
-	agg := aggregateOutcomes(outcomes)
-
-	if filesCount > 1 {
-		fmt.Println()
-		fmt.Printf("Overall: %s passed, %s warning(s), %s failed, %s error(s)\n",
-			green(fmt.Sprint(agg.Passed)),
-			yellow(fmt.Sprint(agg.Warns)),
-			red(fmt.Sprint(agg.Failed)),
-			red(fmt.Sprint(agg.Errored)),
-		)
-	}
-
-	fmt.Printf("\nTotal time: %v\n", time.Since(start).Round(time.Millisecond))
-
-	return agg.HadOpErr, agg.HadValFail, agg.Passed, agg.Failed, agg.Errored
 }
 
 type aggregateResult struct {
@@ -116,4 +87,22 @@ func aggregateOutcomes(outcomes []fileOutcome) aggregateResult {
 	}
 
 	return agg
+}
+
+func aggregateError(agg aggregateResult) error {
+	if agg.HadOpErr {
+		return fmt.Errorf(
+			"one or more files could not be validated due to an error",
+		)
+	}
+
+	if agg.HadValFail {
+		return fmt.Errorf("validation failed")
+	}
+
+	return nil
+}
+
+func aggregateReturnCode(outcomes []fileOutcome) error {
+	return aggregateError(aggregateOutcomes(outcomes))
 }

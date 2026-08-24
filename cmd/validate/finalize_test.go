@@ -3,8 +3,6 @@ package validate
 import (
 	"bytes"
 	"errors"
-	"io"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -14,16 +12,28 @@ import (
 
 type failingWriter struct{}
 
-func (f failingWriter) Write(p []byte) (int, error) {
+func (failingWriter) Write([]byte) (int, error) {
 	return 0, errors.New("write failed")
 }
 
-func TestFinalizeJSON_EncodesOutcomes(t *testing.T) {
-	oldNoColor := noColor
-	t.Cleanup(func() {
-		noColor = oldNoColor
-	})
-	noColor = true
+func testFinalizer(jsonOut bool) (
+	finalizer,
+	*bytes.Buffer,
+	*bytes.Buffer,
+) {
+	out := new(bytes.Buffer)
+	errOut := new(bytes.Buffer)
+
+	return finalizer{
+		out:     out,
+		errOut:  errOut,
+		colors:  newColorizer(true),
+		jsonOut: jsonOut,
+	}, out, errOut
+}
+
+func TestFinalizerJSON_EncodesOutcomes(t *testing.T) {
+	t.Parallel()
 
 	outcomes := []fileOutcome{
 		{
@@ -35,12 +45,10 @@ func TestFinalizeJSON_EncodesOutcomes(t *testing.T) {
 		},
 	}
 
-	var out bytes.Buffer
-	var errOut bytes.Buffer
+	f, out, errOut := testFinalizer(true)
 
-	err := finalizeJSON(&out, &errOut, outcomes)
-	if err != nil {
-		t.Fatalf("finalizeJSON returned error: %v", err)
+	if err := f.finalizeJSON(outcomes); err != nil {
+		t.Fatalf("finalizeJSON() error = %v", err)
 	}
 
 	got := out.String()
@@ -56,7 +64,11 @@ func TestFinalizeJSON_EncodesOutcomes(t *testing.T) {
 		`"warn": 2`,
 	} {
 		if !strings.Contains(got, want) {
-			t.Fatalf("json output = %q, want it to contain %q", got, want)
+			t.Fatalf(
+				"json output = %q, want it to contain %q",
+				got,
+				want,
+			)
 		}
 	}
 
@@ -68,124 +80,131 @@ func TestFinalizeJSON_EncodesOutcomes(t *testing.T) {
 		"human output must not be serialized",
 	} {
 		if strings.Contains(got, unwanted) {
-			t.Fatalf("json output = %q, want it not to contain %q", got, unwanted)
+			t.Fatalf(
+				"json output = %q, want it not to contain %q",
+				got,
+				unwanted,
+			)
 		}
 	}
 
-	if errOut.String() != "" {
+	if errOut.Len() != 0 {
 		t.Fatalf("stderr = %q, want empty", errOut.String())
 	}
 }
 
-func TestFinalizeJSON_ReturnsValidationFailureAfterEncoding(t *testing.T) {
-	oldNoColor := noColor
-	t.Cleanup(func() {
-		noColor = oldNoColor
-	})
-	noColor = true
+func TestFinalizerJSON_ReturnsValidationFailureAfterEncoding(t *testing.T) {
+	t.Parallel()
 
-	outcomes := []fileOutcome{
+	f, out, errOut := testFinalizer(true)
+
+	err := f.finalizeJSON([]fileOutcome{
 		{
 			Path:       "bad.csv",
 			Failed:     1,
 			HadValFail: true,
 			Summary:    &guard.Summary{Fail: 1},
 		},
-	}
+	})
 
-	var out bytes.Buffer
-	var errOut bytes.Buffer
-
-	err := finalizeJSON(&out, &errOut, outcomes)
 	if err == nil {
 		t.Fatal("error = nil, want validation failed")
 	}
 
 	if err.Error() != "validation failed" {
-		t.Fatalf("error = %q, want %q", err.Error(), "validation failed")
+		t.Fatalf(
+			"error = %q, want %q",
+			err.Error(),
+			"validation failed",
+		)
 	}
 
 	if !strings.Contains(out.String(), `"path": "bad.csv"`) {
-		t.Fatalf("json output = %q, want encoded outcomes", out.String())
+		t.Fatalf(
+			"json output = %q, want encoded outcomes",
+			out.String(),
+		)
 	}
 
-	if errOut.String() != "" {
+	if errOut.Len() != 0 {
 		t.Fatalf("stderr = %q, want empty", errOut.String())
 	}
 }
 
-func TestFinalizeJSON_ReturnsOperationalErrorAfterEncoding(t *testing.T) {
-	oldNoColor := noColor
-	t.Cleanup(func() {
-		noColor = oldNoColor
-	})
-	noColor = true
+func TestFinalizerJSON_ReturnsOperationalErrorAfterEncoding(t *testing.T) {
+	t.Parallel()
 
-	outcomes := []fileOutcome{
+	f, out, errOut := testFinalizer(true)
+
+	err := f.finalizeJSON([]fileOutcome{
 		{
 			Path:     "missing.csv",
 			Errored:  1,
 			HadOpErr: true,
 		},
-	}
+	})
 
-	var out bytes.Buffer
-	var errOut bytes.Buffer
+	want := "one or more files could not be validated due to an error"
 
-	err := finalizeJSON(&out, &errOut, outcomes)
 	if err == nil {
 		t.Fatal("error = nil, want operational error")
 	}
 
-	want := "one or more files could not be validated due to an error"
 	if err.Error() != want {
 		t.Fatalf("error = %q, want %q", err.Error(), want)
 	}
 
 	if !strings.Contains(out.String(), `"path": "missing.csv"`) {
-		t.Fatalf("json output = %q, want encoded outcomes", out.String())
+		t.Fatalf(
+			"json output = %q, want encoded outcomes",
+			out.String(),
+		)
 	}
 
-	if errOut.String() != "" {
+	if errOut.Len() != 0 {
 		t.Fatalf("stderr = %q, want empty", errOut.String())
 	}
 }
 
-func TestFinalizeJSON_OperationalErrorTakesPrecedence(t *testing.T) {
-	outcomes := []fileOutcome{
+func TestFinalizerJSON_OperationalErrorTakesPrecedence(t *testing.T) {
+	t.Parallel()
+
+	f, _, _ := testFinalizer(true)
+
+	err := f.finalizeJSON([]fileOutcome{
 		{
 			Path:       "missing.csv",
-			Errored:    1,
 			Failed:     1,
+			Errored:    1,
 			HadOpErr:   true,
 			HadValFail: true,
 		},
-	}
+	})
 
-	var out bytes.Buffer
-	var errOut bytes.Buffer
+	want := "one or more files could not be validated due to an error"
 
-	err := finalizeJSON(&out, &errOut, outcomes)
 	if err == nil {
 		t.Fatal("error = nil, want operational error")
 	}
 
-	want := "one or more files could not be validated due to an error"
 	if err.Error() != want {
 		t.Fatalf("error = %q, want %q", err.Error(), want)
 	}
 }
 
-func TestFinalizeJSON_ReturnsEncodeError(t *testing.T) {
-	oldNoColor := noColor
-	t.Cleanup(func() {
-		noColor = oldNoColor
-	})
-	noColor = true
+func TestFinalizerJSON_ReturnsEncodeError(t *testing.T) {
+	t.Parallel()
 
 	var errOut bytes.Buffer
 
-	err := finalizeJSON(failingWriter{}, &errOut, []fileOutcome{
+	f := finalizer{
+		out:     failingWriter{},
+		errOut:  &errOut,
+		colors:  newColorizer(true),
+		jsonOut: true,
+	}
+
+	err := f.finalizeJSON([]fileOutcome{
 		{Path: "ok.csv", Passed: 1},
 	})
 
@@ -197,219 +216,305 @@ func TestFinalizeJSON_ReturnsEncodeError(t *testing.T) {
 		t.Fatalf("error = %q, want write failed", err.Error())
 	}
 
-	want := "failed to encode json: jsontext: write error"
-	if !strings.Contains(errOut.String(), want) {
-		t.Fatalf("stderr = %q, want it to contain %q", errOut.String(), want)
+	if !strings.Contains(
+		errOut.String(),
+		"failed to encode json:",
+	) {
+		t.Fatalf(
+			"stderr = %q, want encode error",
+			errOut.String(),
+		)
 	}
 }
 
-func TestFinalizeText_ReturnsNilWhenNoFailures(t *testing.T) {
-	oldNoColor := noColor
-	t.Cleanup(func() {
-		noColor = oldNoColor
-	})
-	noColor = true
+func TestFinalizerText_ReturnsNilWhenNoFailures(t *testing.T) {
+	t.Parallel()
 
-	outcomes := []fileOutcome{
-		{
-			Path:   "ok.csv",
-			Passed: 1,
-			Output: "file output\n",
+	f, out, _ := testFinalizer(false)
+
+	err := f.finalizeText(
+		[]fileOutcome{
+			{
+				Path:   "ok.csv",
+				Passed: 1,
+				Output: "file output\n",
+			},
 		},
+		1,
+		time.Now(),
+	)
+	if err != nil {
+		t.Fatalf("finalizeText() error = %v", err)
 	}
 
-	stdout := captureStdout(t, func() {
-		err := finalizeText(outcomes, 1, time.Now())
-		if err != nil {
-			t.Fatalf("finalizeText returned error: %v", err)
-		}
-	})
+	got := out.String()
 
-	if !strings.Contains(stdout, "file output\n") {
-		t.Fatalf("stdout = %q, want file output", stdout)
+	if !strings.Contains(got, "file output\n") {
+		t.Fatalf("output = %q, want file output", got)
 	}
 
-	if !strings.Contains(stdout, "Total time:") {
-		t.Fatalf("stdout = %q, want total time", stdout)
+	if !strings.Contains(got, "Total time:") {
+		t.Fatalf("output = %q, want total time", got)
 	}
 
-	if strings.Contains(stdout, "Overall:") {
-		t.Fatalf("stdout = %q, want no overall line for single file", stdout)
+	if strings.Contains(got, "Overall:") {
+		t.Fatalf(
+			"output = %q, want no overall line for single file",
+			got,
+		)
 	}
 }
 
-func TestFinalizeText_ReturnsValidationFailed(t *testing.T) {
-	oldNoColor := noColor
-	t.Cleanup(func() {
-		noColor = oldNoColor
-	})
-	noColor = true
+func TestFinalizerText_ReturnsValidationFailed(t *testing.T) {
+	t.Parallel()
 
-	outcomes := []fileOutcome{
-		{
-			Path:       "bad.csv",
-			Failed:     1,
-			HadValFail: true,
-			Output:     "bad file output\n",
+	f, out, _ := testFinalizer(false)
+
+	err := f.finalizeText(
+		[]fileOutcome{
+			{
+				Path:       "bad.csv",
+				Failed:     1,
+				HadValFail: true,
+				Output:     "bad file output\n",
+			},
 		},
-	}
+		1,
+		time.Now(),
+	)
 
-	var gotErr error
-	stdout := captureStdout(t, func() {
-		gotErr = finalizeText(outcomes, 1, time.Now())
-	})
-
-	if gotErr == nil {
+	if err == nil {
 		t.Fatal("error = nil, want validation failed")
 	}
 
-	if gotErr.Error() != "validation failed" {
-		t.Fatalf("error = %q, want %q", gotErr.Error(), "validation failed")
+	if err.Error() != "validation failed" {
+		t.Fatalf(
+			"error = %q, want %q",
+			err.Error(),
+			"validation failed",
+		)
 	}
 
-	if !strings.Contains(stdout, "bad file output\n") {
-		t.Fatalf("stdout = %q, want file output", stdout)
-	}
-}
-
-func TestFinalizeText_ReturnsOperationalError(t *testing.T) {
-	oldNoColor := noColor
-	t.Cleanup(func() {
-		noColor = oldNoColor
-	})
-	noColor = true
-
-	outcomes := []fileOutcome{
-		{
-			Path:     "missing.csv",
-			Errored:  1,
-			HadOpErr: true,
-			Output:   "read error output\n",
-		},
-	}
-
-	var gotErr error
-	stdout := captureStdout(t, func() {
-		gotErr = finalizeText(outcomes, 1, time.Now())
-	})
-
-	if gotErr == nil {
-		t.Fatal("error = nil, want operational error")
-	}
-
-	want := "one or more files could not be validated due to an error"
-	if gotErr.Error() != want {
-		t.Fatalf("error = %q, want %q", gotErr.Error(), want)
-	}
-
-	if !strings.Contains(stdout, "read error output\n") {
-		t.Fatalf("stdout = %q, want file output", stdout)
+	if !strings.Contains(out.String(), "bad file output\n") {
+		t.Fatalf(
+			"output = %q, want file output",
+			out.String(),
+		)
 	}
 }
 
-func TestFinalizeText_OperationalErrorTakesPrecedence(t *testing.T) {
-	outcomes := []fileOutcome{
-		{
-			Path:       "missing.csv",
-			Failed:     1,
-			Errored:    1,
-			HadOpErr:   true,
-			HadValFail: true,
-		},
-	}
+func TestFinalizerText_ReturnsOperationalError(t *testing.T) {
+	t.Parallel()
 
-	var gotErr error
-	_ = captureStdout(t, func() {
-		gotErr = finalizeText(outcomes, 1, time.Now())
-	})
+	f, out, _ := testFinalizer(false)
 
-	if gotErr == nil {
-		t.Fatal("error = nil, want operational error")
-	}
-
-	want := "one or more files could not be validated due to an error"
-	if gotErr.Error() != want {
-		t.Fatalf("error = %q, want %q", gotErr.Error(), want)
-	}
-}
-
-func TestFinalizeText_PrintsOverallForMultipleFiles(t *testing.T) {
-	oldNoColor := noColor
-	t.Cleanup(func() {
-		noColor = oldNoColor
-	})
-	noColor = true
-
-	outcomes := []fileOutcome{
-		{
-			Path:   "ok.csv",
-			Passed: 1,
-			Summary: &guard.Summary{
-				Warn: 2,
+	err := f.finalizeText(
+		[]fileOutcome{
+			{
+				Path:     "missing.csv",
+				Errored:  1,
+				HadOpErr: true,
+				Output:   "read error output\n",
 			},
 		},
-		{
-			Path:   "bad.csv",
-			Failed: 1,
-			Summary: &guard.Summary{
-				Warn: 1,
-			},
-			HadValFail: true,
-		},
-		{
-			Path:     "missing.csv",
-			Errored:  1,
-			HadOpErr: true,
-		},
-	}
+		1,
+		time.Now(),
+	)
 
-	var gotErr error
-	stdout := captureStdout(t, func() {
-		gotErr = finalizeText(outcomes, 3, time.Now())
-	})
+	want := "one or more files could not be validated due to an error"
 
-	if gotErr == nil {
+	if err == nil {
 		t.Fatal("error = nil, want operational error")
 	}
 
-	wantOverall := "Overall: 1 passed, 3 warning(s), 1 failed, 1 error(s)"
-	if !strings.Contains(stdout, wantOverall) {
-		t.Fatalf("stdout = %q, want overall line %q", stdout, wantOverall)
+	if err.Error() != want {
+		t.Fatalf("error = %q, want %q", err.Error(), want)
+	}
+
+	if !strings.Contains(out.String(), "read error output\n") {
+		t.Fatalf(
+			"output = %q, want file output",
+			out.String(),
+		)
 	}
 }
 
-func captureStdout(t *testing.T, fn func()) string {
-	t.Helper()
+func TestFinalizerText_OperationalErrorTakesPrecedence(t *testing.T) {
+	t.Parallel()
 
-	oldStdout := os.Stdout
+	f, _, _ := testFinalizer(false)
 
-	r, w, err := os.Pipe()
+	err := f.finalizeText(
+		[]fileOutcome{
+			{
+				Path:       "missing.csv",
+				Failed:     1,
+				Errored:    1,
+				HadOpErr:   true,
+				HadValFail: true,
+			},
+		},
+		1,
+		time.Now(),
+	)
+
+	want := "one or more files could not be validated due to an error"
+
+	if err == nil {
+		t.Fatal("error = nil, want operational error")
+	}
+
+	if err.Error() != want {
+		t.Fatalf("error = %q, want %q", err.Error(), want)
+	}
+}
+
+func TestFinalizerText_PrintsOverallForMultipleFiles(t *testing.T) {
+	t.Parallel()
+
+	f, out, _ := testFinalizer(false)
+
+	err := f.finalizeText(
+		[]fileOutcome{
+			{
+				Path:   "ok.csv",
+				Passed: 1,
+				Summary: &guard.Summary{
+					Warn: 2,
+				},
+			},
+			{
+				Path:   "bad.csv",
+				Failed: 1,
+				Summary: &guard.Summary{
+					Warn: 1,
+				},
+				HadValFail: true,
+			},
+			{
+				Path:     "missing.csv",
+				Errored:  1,
+				HadOpErr: true,
+			},
+		},
+		3,
+		time.Now(),
+	)
+
+	if err == nil {
+		t.Fatal("error = nil, want operational error")
+	}
+
+	want := "Overall: 1 passed, 3 warning(s), 1 failed, 1 error(s)"
+
+	if !strings.Contains(out.String(), want) {
+		t.Fatalf(
+			"output = %q, want overall line %q",
+			out.String(),
+			want,
+		)
+	}
+}
+
+func TestFinalizer_Finalize(t *testing.T) {
+	t.Parallel()
+
+	t.Run("text", func(t *testing.T) {
+		t.Parallel()
+
+		f, out, _ := testFinalizer(false)
+
+		if err := f.finalize(nil, 0, time.Now()); err != nil {
+			t.Fatalf("finalize() error = %v", err)
+		}
+
+		if !strings.Contains(out.String(), "Total time:") {
+			t.Fatalf(
+				"output = %q, want total time",
+				out.String(),
+			)
+		}
+	})
+
+	t.Run("json", func(t *testing.T) {
+		t.Parallel()
+
+		f, out, _ := testFinalizer(true)
+
+		if err := f.finalize([]fileOutcome{}, 0, time.Now()); err != nil {
+			t.Fatalf("finalize() error = %v", err)
+		}
+
+		if strings.TrimSpace(out.String()) != "[]" {
+			t.Fatalf(
+				"output = %q, want []",
+				out.String(),
+			)
+		}
+	})
+}
+
+type failAfterJSONWriter struct {
+	buf   bytes.Buffer
+	armed bool
+	err   error
+}
+
+func (w *failAfterJSONWriter) Write(p []byte) (int, error) {
+	if w.armed {
+		return 0, w.err
+	}
+
+	n, err := w.buf.Write(p)
 	if err != nil {
-		t.Fatalf("os.Pipe failed: %v", err)
+		return n, err
 	}
 
-	os.Stdout = w
-
-	done := make(chan string)
-	go func() {
-		var buf bytes.Buffer
-		_, _ = io.Copy(&buf, r)
-		done <- buf.String()
-	}()
-
-	fn()
-
-	if err := w.Close(); err != nil {
-		t.Fatalf("pipe writer close failed: %v", err)
+	if bytes.Equal(
+		bytes.TrimSpace(w.buf.Bytes()),
+		[]byte("[]"),
+	) {
+		w.armed = true
 	}
 
-	os.Stdout = oldStdout
+	return n, nil
+}
 
-	out := <-done
+func TestFinalizerJSON_NewlineWriteError(t *testing.T) {
+	t.Parallel()
 
-	if err := r.Close(); err != nil {
-		t.Fatalf("pipe reader close failed: %v", err)
+	wantErr := errors.New("write failed")
+
+	out := &failAfterJSONWriter{
+		err: wantErr,
 	}
 
-	return out
+	var errOut bytes.Buffer
+
+	f := finalizer{
+		out:     out,
+		errOut:  &errOut,
+		colors:  newColorizer(true),
+		jsonOut: true,
+	}
+
+	err := f.finalizeJSON([]fileOutcome{})
+
+	if !errors.Is(err, wantErr) {
+		t.Fatalf(
+			"finalizeJSON() error = %v, want %v",
+			err,
+			wantErr,
+		)
+	}
+
+	if !strings.Contains(
+		errOut.String(),
+		"failed to write json: write failed",
+	) {
+		t.Fatalf(
+			"stderr = %q, want newline write error",
+			errOut.String(),
+		)
+	}
 }

@@ -106,12 +106,21 @@ func TestValidateGlossaryGuardEnvelope_ValidationFailureIsNotWASMFailure(t *test
 		t.Fatalf("OK = false, want true; error: %q", env.Error)
 	}
 
+	if env.Error != "" {
+		t.Fatalf("Error = %q, want empty", env.Error)
+	}
+
 	if env.Result == nil {
 		t.Fatal("Result = nil, want validation result")
 	}
 
 	if env.Result.Status != guard.StatusFailed {
-		t.Fatalf("Status = %q, want %q; result: %#v", env.Result.Status, guard.StatusFailed, env.Result)
+		t.Fatalf(
+			"Status = %q, want %q; result: %#v",
+			env.Result.Status,
+			guard.StatusFailed,
+			env.Result,
+		)
 	}
 
 	if !env.Result.Failed {
@@ -159,6 +168,30 @@ func TestValidateGlossaryGuard_RecoversFromPanic(t *testing.T) {
 
 	if !strings.Contains(env.Error, "wasm panic") {
 		t.Fatalf("Error = %q, want wasm panic error", env.Error)
+	}
+}
+
+func TestValidateGlossaryGuard_ReturnsEncodedErrorEnvelope(t *testing.T) {
+	raw := validateGlossaryGuard(
+		js.Undefined(),
+		[]js.Value{js.ValueOf("not json")},
+	)
+
+	env := decodeWASMEnvelope(t, raw)
+
+	if env.OK {
+		t.Fatal("OK = true, want false")
+	}
+
+	if env.Result != nil {
+		t.Fatalf("Result = %#v, want nil", env.Result)
+	}
+
+	if !strings.Contains(env.Error, "invalid input json") {
+		t.Fatalf(
+			"Error = %q, want invalid input json error",
+			env.Error,
+		)
 	}
 }
 

@@ -1,12 +1,13 @@
 package validate
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
-	"reflect"
+	"slices"
 	"testing"
 
-	"github.com/spf13/cobra"
+	"github.com/bodrovis/lokalise-glossary-guard-core/pkg/checks"
 )
 
 func TestNewCmd_CanBeCreatedMultipleTimes(t *testing.T) {
@@ -32,6 +33,10 @@ func TestNewCmd_Config(t *testing.T) {
 
 	if cmd.Long == "" {
 		t.Fatal("Long is empty")
+	}
+
+	if cmd.Args == nil {
+		t.Fatal("Args = nil, want validator")
 	}
 
 	if cmd.PreRunE == nil {
@@ -79,39 +84,12 @@ func TestNewCmd_Flags(t *testing.T) {
 	}
 }
 
-func TestInit_AddsValidateCommand(t *testing.T) {
-	root := &cobra.Command{Use: "root"}
+func TestNewCmd_RejectsPositionalArgs(t *testing.T) {
+	cmd := NewCmd()
 
-	Init(root)
-
-	cmd, _, err := root.Find([]string{"validate"})
-	if err != nil {
-		t.Fatalf("Find validate returned error: %v", err)
-	}
-
-	if cmd == nil {
-		t.Fatal("validate command not found")
-	}
-
-	if cmd.Name() != "validate" {
-		t.Fatalf("cmd.Name() = %q, want %q", cmd.Name(), "validate")
-	}
-}
-
-func TestInit_CanBeCalledForDifferentRoots(t *testing.T) {
-	for i := 0; i < 10; i++ {
-		root := &cobra.Command{Use: "root"}
-
-		Init(root)
-
-		cmd, _, err := root.Find([]string{"validate"})
-		if err != nil {
-			t.Fatalf("Find validate returned error: %v", err)
-		}
-
-		if cmd == nil || cmd.Name() != "validate" {
-			t.Fatalf("validate command not found")
-		}
+	err := cmd.Args(cmd, []string{"unexpected"})
+	if err == nil {
+		t.Fatal("Args() error = nil, want non-nil")
 	}
 }
 
@@ -131,12 +109,8 @@ func TestValidatePreRun_NoFiles(t *testing.T) {
 }
 
 func TestValidatePreRun_ExpandsFilesAndPreprocessesLangs(t *testing.T) {
-	oldNoColor := noColor
-	t.Cleanup(func() {
-		noColor = oldNoColor
-	})
-
 	dir := t.TempDir()
+
 	first := filepath.Join(dir, "a.csv")
 	second := filepath.Join(dir, "b.csv")
 
@@ -156,60 +130,43 @@ func TestValidatePreRun_ExpandsFilesAndPreprocessesLangs(t *testing.T) {
 
 	err := validatePreRun(&opts)
 	if err != nil {
-		t.Fatalf("validatePreRun returned error: %v", err)
+		t.Fatalf("validatePreRun() error = %v", err)
 	}
 
 	wantFiles := []string{first, second}
-	if !reflect.DeepEqual(opts.files, wantFiles) {
+	if !slices.Equal(opts.files, wantFiles) {
 		t.Fatalf("files = %#v, want %#v", opts.files, wantFiles)
 	}
 
 	wantLangs := []string{"en", "fr", "lv"}
-	if !reflect.DeepEqual(opts.langs, wantLangs) {
+	if !slices.Equal(opts.langs, wantLangs) {
 		t.Fatalf("langs = %#v, want %#v", opts.langs, wantLangs)
 	}
 }
 
 func TestValidatePreRun_UsesNoColorEnv(t *testing.T) {
-	oldNoColor := noColor
-	t.Cleanup(func() {
-		noColor = oldNoColor
-	})
-
 	t.Setenv("NO_COLOR", "1")
 
-	dir := t.TempDir()
-	path := filepath.Join(dir, "glossary.csv")
+	path := filepath.Join(t.TempDir(), "glossary.csv")
 	mustWriteFileCommandTest(t, path, "csv")
 
 	opts := defaultCommandOptions()
 	opts.files = []string{path}
-	opts.noColor = false
 
 	err := validatePreRun(&opts)
 	if err != nil {
-		t.Fatalf("validatePreRun returned error: %v", err)
+		t.Fatalf("validatePreRun() error = %v", err)
 	}
 
 	if !opts.noColor {
 		t.Fatal("opts.noColor = false, want true")
 	}
-
-	if !noColor {
-		t.Fatal("package noColor = false, want true")
-	}
 }
 
 func TestValidatePreRun_ExplicitNoColorStaysEnabled(t *testing.T) {
-	oldNoColor := noColor
-	t.Cleanup(func() {
-		noColor = oldNoColor
-	})
-
 	t.Setenv("NO_COLOR", "")
 
-	dir := t.TempDir()
-	path := filepath.Join(dir, "glossary.csv")
+	path := filepath.Join(t.TempDir(), "glossary.csv")
 	mustWriteFileCommandTest(t, path, "csv")
 
 	opts := defaultCommandOptions()
@@ -218,15 +175,11 @@ func TestValidatePreRun_ExplicitNoColorStaysEnabled(t *testing.T) {
 
 	err := validatePreRun(&opts)
 	if err != nil {
-		t.Fatalf("validatePreRun returned error: %v", err)
+		t.Fatalf("validatePreRun() error = %v", err)
 	}
 
 	if !opts.noColor {
 		t.Fatal("opts.noColor = false, want true")
-	}
-
-	if !noColor {
-		t.Fatal("package noColor = false, want true")
 	}
 }
 
@@ -278,5 +231,76 @@ func TestNewCmd_ExecuteWithoutFilesReturnsPreRunError(t *testing.T) {
 	want := "no files provided; use --files to specify one or more CSV files"
 	if err.Error() != want {
 		t.Fatalf("error = %q, want %q", err.Error(), want)
+	}
+}
+
+func TestNewCmd_RunE(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "glossary.csv")
+
+	data := "term;description\nfoo;bar\n"
+	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
+		t.Fatalf("write glossary: %v", err)
+	}
+
+	cmd := NewCmd()
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+
+	cmd.SetArgs([]string{
+		"--files", path,
+		"--no-color",
+	})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	if out.Len() == 0 {
+		t.Fatal("stdout is empty, want validation output")
+	}
+
+	if errOut.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", errOut.String())
+	}
+}
+
+func TestValidatePreRun_NoChecksRegistered(t *testing.T) {
+	registered := checks.List()
+
+	t.Cleanup(func() {
+		checks.Reset()
+
+		for _, check := range registered {
+			if _, err := checks.Register(check); err != nil {
+				t.Errorf("restore check %q: %v", check.Name(), err)
+			}
+		}
+	})
+
+	checks.Reset()
+
+	opts := defaultCommandOptions()
+	opts.files = []string{
+		filepath.Join(t.TempDir(), "glossary.csv"),
+	}
+	opts.noColor = true
+
+	err := validatePreRun(&opts)
+	if err == nil {
+		t.Fatal("validatePreRun() error = nil, want non-nil")
+	}
+
+	const want = "no checks registered; nothing to run"
+
+	if err.Error() != want {
+		t.Fatalf(
+			"validatePreRun() error = %q, want %q",
+			err.Error(),
+			want,
+		)
 	}
 }

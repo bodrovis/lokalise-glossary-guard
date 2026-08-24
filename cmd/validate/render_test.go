@@ -9,12 +9,16 @@ import (
 	"github.com/bodrovis/lokalise-glossary-guard/pkg/guard"
 )
 
-func TestRenderResult(t *testing.T) {
-	oldNoColor := noColor
-	t.Cleanup(func() {
-		noColor = oldNoColor
-	})
-	noColor = true
+func newTestRenderer(b *strings.Builder) fileRenderer {
+	return fileRenderer{
+		out:       b,
+		separator: "---",
+		colors:    newColorizer(true),
+	}
+}
+
+func TestFileRenderer_Result(t *testing.T) {
+	t.Parallel()
 
 	tests := []struct {
 		name string
@@ -32,7 +36,7 @@ func TestRenderResult(t *testing.T) {
 			want: "Result: PASSED WITH WARNINGS\n",
 		},
 		{
-			name: "passed default",
+			name: "passed",
 			resp: guard.ValidateResponse{Passed: true},
 			want: "Result: PASSED\n",
 		},
@@ -45,27 +49,31 @@ func TestRenderResult(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var b strings.Builder
+			t.Parallel()
 
-			renderResult(&b, tt.resp)
+			var b strings.Builder
+			r := newTestRenderer(&b)
+
+			r.result(tt.resp)
 
 			if b.String() != tt.want {
-				t.Fatalf("output = %q, want %q", b.String(), tt.want)
+				t.Fatalf(
+					"output = %q, want %q",
+					b.String(),
+					tt.want,
+				)
 			}
 		})
 	}
 }
 
-func TestRenderSummary(t *testing.T) {
-	oldNoColor := noColor
-	t.Cleanup(func() {
-		noColor = oldNoColor
-	})
-	noColor = true
+func TestFileRenderer_Summary(t *testing.T) {
+	t.Parallel()
 
 	var b strings.Builder
+	r := newTestRenderer(&b)
 
-	renderSummary(&b, "glossary.csv", guard.Summary{
+	r.summary("glossary.csv", guard.Summary{
 		Pass:   10,
 		Warn:   2,
 		Fail:   1,
@@ -73,86 +81,77 @@ func TestRenderSummary(t *testing.T) {
 	})
 
 	want := "\nSummary for glossary.csv: 10 passed, 2 warning(s), 1 failed, 3 errors\n"
+
 	if b.String() != want {
 		t.Fatalf("output = %q, want %q", b.String(), want)
 	}
 }
 
-func TestRenderEarlyExit_NoEarlyExit(t *testing.T) {
-	var b strings.Builder
+func TestFileRenderer_EarlyExit(t *testing.T) {
+	t.Run("disabled", func(t *testing.T) {
+		var b strings.Builder
+		r := newTestRenderer(&b)
 
-	renderEarlyExit(&b, guard.Summary{
-		EarlyExit: false,
+		r.earlyExit(guard.Summary{})
+
+		if b.Len() != 0 {
+			t.Fatalf("output = %q, want empty", b.String())
+		}
 	})
 
-	if b.String() != "" {
-		t.Fatalf("output = %q, want empty", b.String())
-	}
+	t.Run("prints skipped checks", func(t *testing.T) {
+		total := len(checks.List())
+		if total == 0 {
+			t.Skip("no checks registered")
+		}
+
+		var b strings.Builder
+		r := newTestRenderer(&b)
+
+		r.earlyExit(guard.Summary{
+			EarlyExit:   true,
+			EarlyCheck:  "headers",
+			EarlyStatus: "FAIL",
+			Outcomes:    make([]guard.Outcome, total-1),
+		})
+
+		want := `Stopped early due to fail-fast in check "headers" (FAIL). Skipped 1 remaining check(s).` + "\n"
+
+		if b.String() != want {
+			t.Fatalf("output = %q, want %q", b.String(), want)
+		}
+	})
+
+	t.Run("never prints negative skipped count", func(t *testing.T) {
+		var b strings.Builder
+		r := newTestRenderer(&b)
+
+		r.earlyExit(guard.Summary{
+			EarlyExit:   true,
+			EarlyCheck:  "headers",
+			EarlyStatus: "FAIL",
+			Outcomes:    make([]guard.Outcome, len(checks.List())+10),
+		})
+
+		if !strings.Contains(
+			b.String(),
+			"Skipped 0 remaining check(s).",
+		) {
+			t.Fatalf(
+				"output = %q, want skipped 0",
+				b.String(),
+			)
+		}
+	})
 }
 
-func TestRenderEarlyExit_PrintsMessage(t *testing.T) {
-	oldNoColor := noColor
-	t.Cleanup(func() {
-		noColor = oldNoColor
-	})
-	noColor = true
-
-	total := len(checks.List())
-	if total == 0 {
-		t.Skip("no checks registered")
-	}
-
-	outcomes := make([]guard.Outcome, total-1)
+func TestFileRenderer_CheckOutcomes(t *testing.T) {
+	t.Parallel()
 
 	var b strings.Builder
+	r := newTestRenderer(&b)
 
-	renderEarlyExit(&b, guard.Summary{
-		EarlyExit:   true,
-		EarlyCheck:  "headers",
-		EarlyStatus: "FAIL",
-		Outcomes:    outcomes,
-	})
-
-	want := `Stopped early due to fail-fast in check "headers" (FAIL). Skipped 1 remaining check(s).` + "\n"
-	if b.String() != want {
-		t.Fatalf("output = %q, want %q", b.String(), want)
-	}
-}
-
-func TestRenderEarlyExit_DoesNotPrintNegativeSkippedCount(t *testing.T) {
-	oldNoColor := noColor
-	t.Cleanup(func() {
-		noColor = oldNoColor
-	})
-	noColor = true
-
-	total := len(checks.List())
-	outcomes := make([]guard.Outcome, total+10)
-
-	var b strings.Builder
-
-	renderEarlyExit(&b, guard.Summary{
-		EarlyExit:   true,
-		EarlyCheck:  "headers",
-		EarlyStatus: "FAIL",
-		Outcomes:    outcomes,
-	})
-
-	if !strings.Contains(b.String(), "Skipped 0 remaining check(s).") {
-		t.Fatalf("output = %q, want skipped 0", b.String())
-	}
-}
-
-func TestRenderCheckOutcomes(t *testing.T) {
-	oldNoColor := noColor
-	t.Cleanup(func() {
-		noColor = oldNoColor
-	})
-	noColor = true
-
-	var b strings.Builder
-
-	renderCheckOutcomes(&b, guard.Summary{
+	r.checkOutcomes(guard.Summary{
 		Outcomes: []guard.Outcome{
 			{
 				Name:     "headers",
@@ -168,9 +167,8 @@ func TestRenderCheckOutcomes(t *testing.T) {
 				Note:    "removed\nempty line",
 			},
 			{
-				Name:    "bad-delimiter",
-				Status:  "FAIL",
-				Message: "",
+				Name:   "bad-delimiter",
+				Status: "FAIL",
 			},
 		},
 	})
@@ -188,19 +186,15 @@ func TestRenderCheckOutcomes(t *testing.T) {
 	}
 }
 
-func TestRenderValidationReport(t *testing.T) {
-	oldNoColor := noColor
-	t.Cleanup(func() {
-		noColor = oldNoColor
-	})
-	noColor = true
+func TestFileRenderer_ValidationReport(t *testing.T) {
+	t.Parallel()
 
 	var b strings.Builder
+	r := newTestRenderer(&b)
 
-	renderValidationReport(&b, "glossary.csv", guard.Summary{
+	r.validationReport("glossary.csv", guard.Summary{
 		Pass: 1,
 		Warn: 1,
-		Fail: 0,
 		Outcomes: []guard.Outcome{
 			{
 				Name:    "headers",
@@ -225,73 +219,102 @@ func TestRenderValidationReport(t *testing.T) {
 		"Summary for glossary.csv: 1 passed, 1 warning(s), 0 failed, 0 errors\n",
 	} {
 		if !strings.Contains(got, want) {
-			t.Fatalf("output = %q, want it to contain %q", got, want)
+			t.Fatalf(
+				"output = %q, want it to contain %q",
+				got,
+				want,
+			)
 		}
 	}
 }
 
-func TestRenderFileHeader_FirstFile(t *testing.T) {
-	oldNoColor := noColor
-	t.Cleanup(func() {
-		noColor = oldNoColor
+func TestFileRenderer_FileHeader(t *testing.T) {
+	t.Parallel()
+
+	t.Run("first file", func(t *testing.T) {
+		t.Parallel()
+
+		var b strings.Builder
+
+		opts := checks.RunOptions{
+			FixMode:       checks.FixNone,
+			RerunAfterFix: true,
+			HardFailOnErr: false,
+		}
+
+		r := fileRenderer{
+			out:       &b,
+			separator: "---",
+			options:   opts,
+			colors:    newColorizer(true),
+		}
+
+		r.fileHeader(0, "glossary.csv")
+
+		want := "" +
+			"---\n" +
+			"Validating: glossary.csv\n" +
+			"---\n\n" +
+			fmt.Sprintf(
+				"Mode: FixMode=%v, RerunAfterFix=true, HardFailOnErr=false\n\n",
+				checks.FixNone,
+			)
+
+		if b.String() != want {
+			t.Fatalf("output = %q, want %q", b.String(), want)
+		}
 	})
-	noColor = true
 
-	var b strings.Builder
+	t.Run("subsequent file starts with blank line", func(t *testing.T) {
+		t.Parallel()
 
-	opts := checks.RunOptions{
-		FixMode:       checks.FixNone,
-		RerunAfterFix: true,
-		HardFailOnErr: false,
-	}
+		var b strings.Builder
+		r := newTestRenderer(&b)
 
-	renderFileHeader(&b, 0, "glossary.csv", "---", opts)
+		r.fileHeader(1, "second.csv")
 
-	want := "" +
-		"---\n" +
-		"Validating: glossary.csv\n" +
-		"---\n\n" +
-		fmt.Sprintf("Mode: FixMode=%v, RerunAfterFix=true, HardFailOnErr=false\n\n", checks.FixNone)
-
-	if b.String() != want {
-		t.Fatalf("output = %q, want %q", b.String(), want)
-	}
-}
-
-func TestRenderFileHeader_NextFileStartsWithBlankLine(t *testing.T) {
-	oldNoColor := noColor
-	t.Cleanup(func() {
-		noColor = oldNoColor
+		if !strings.HasPrefix(b.String(), "\n---\n") {
+			t.Fatalf(
+				"output = %q, want leading blank line",
+				b.String(),
+			)
+		}
 	})
-	noColor = true
-
-	var b strings.Builder
-
-	renderFileHeader(&b, 1, "second.csv", "---", checks.RunOptions{})
-
-	if !strings.HasPrefix(b.String(), "\n---\n") {
-		t.Fatalf("output = %q, want leading blank line before separator", b.String())
-	}
 }
 
 func TestOneLine(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
+		name string
 		in   string
 		want string
 	}{
-		{"", ""},
-		{"hello", "hello"},
-		{" hello   world ", "hello world"},
-		{"hello\nworld", "hello world"},
-		{"hello\r\nworld", "hello world"},
-		{"hello\n\n\tworld   again", "hello world again"},
+		{"empty", "", ""},
+		{"unchanged", "hello", "hello"},
+		{"spaces", " hello   world ", "hello world"},
+		{"newline", "hello\nworld", "hello world"},
+		{"crlf", "hello\r\nworld", "hello world"},
+		{
+			"mixed whitespace",
+			"hello\n\n\tworld   again",
+			"hello world again",
+		},
 	}
 
 	for _, tt := range tests {
-		t.Run(fmt.Sprintf("%q", tt.in), func(t *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := oneLine(tt.in)
+
 			if got != tt.want {
-				t.Fatalf("oneLine(%q) = %q, want %q", tt.in, got, tt.want)
+				t.Fatalf(
+					"oneLine(%q) = %q, want %q",
+					tt.in,
+					got,
+					tt.want,
+				)
 			}
 		})
 	}

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"slices"
 	"strings"
 	"syscall/js"
 	"testing"
@@ -68,7 +69,9 @@ func TestValidateRequestFromArgs_ValidJSONString(t *testing.T) {
 	}
 
 	wantLangs := []string{"fr", "en,lv"}
-	assertStringSlice(t, req.Langs, wantLangs)
+	if !slices.Equal(req.Langs, wantLangs) {
+		t.Fatalf("Langs = %#v, want %#v", req.Langs, wantLangs)
+	}
 }
 
 func TestValidateRequestFromArgs_ValidJSObject(t *testing.T) {
@@ -111,7 +114,9 @@ func TestValidateRequestFromArgs_ValidJSObject(t *testing.T) {
 	}
 
 	wantLangs := []string{"fr", "en,lv"}
-	assertStringSlice(t, req.Langs, wantLangs)
+	if !slices.Equal(req.Langs, wantLangs) {
+		t.Fatalf("Langs = %#v, want %#v", req.Langs, wantLangs)
+	}
 }
 
 func TestValidateRequestFromArgs_InvalidJSONString(t *testing.T) {
@@ -232,16 +237,73 @@ func TestInputToJSON_Function(t *testing.T) {
 	}
 }
 
-func assertStringSlice(t *testing.T, got, want []string) {
-	t.Helper()
+func TestInputToJSON_CyclicObjectReturnsError(t *testing.T) {
+	obj := js.Global().Get("Object").New()
+	obj.Set("self", obj)
 
-	if len(got) != len(want) {
-		t.Fatalf("slice len = %d, want %d; got %#v", len(got), len(want), got)
+	got, err := inputToJSON(obj)
+
+	if err == nil {
+		t.Fatal("error = nil, want serialization error")
 	}
 
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("slice[%d] = %q, want %q; got %#v", i, got[i], want[i], got)
-		}
+	if got != "" {
+		t.Fatalf("inputToJSON() = %q, want empty", got)
+	}
+
+	if !strings.Contains(err.Error(), "failed to serialize input") {
+		t.Fatalf(
+			"error = %q, want failed to serialize input error",
+			err.Error(),
+		)
+	}
+}
+
+func TestValidateRequestFromArgs_CyclicObjectReturnsError(t *testing.T) {
+	obj := js.Global().Get("Object").New()
+	obj.Set("self", obj)
+
+	req, err := validateRequestFromArgs([]js.Value{obj})
+
+	if err == nil {
+		t.Fatal("error = nil, want serialization error")
+	}
+
+	if !strings.Contains(err.Error(), "failed to serialize input") {
+		t.Fatalf(
+			"error = %q, want failed to serialize input error",
+			err.Error(),
+		)
+	}
+
+	if req.Path != "" {
+		t.Fatalf("Path = %q, want empty", req.Path)
+	}
+}
+
+func TestValidateGlossaryGuard_CyclicObjectReturnsError(t *testing.T) {
+	obj := js.Global().Get("Object").New()
+	obj.Set("self", obj)
+
+	raw := validateGlossaryGuard(
+		js.Undefined(),
+		[]js.Value{obj},
+	)
+
+	env := decodeWASMEnvelope(t, raw)
+
+	if env.OK {
+		t.Fatal("OK = true, want false")
+	}
+
+	if env.Result != nil {
+		t.Fatalf("Result = %#v, want nil", env.Result)
+	}
+
+	if !strings.Contains(env.Error, "failed to serialize input") {
+		t.Fatalf(
+			"Error = %q, want serialization error",
+			env.Error,
+		)
 	}
 }

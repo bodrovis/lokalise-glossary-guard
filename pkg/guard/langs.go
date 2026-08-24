@@ -1,7 +1,7 @@
 package guard
 
 import (
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -19,6 +19,7 @@ func PreprocessLangs(ls []string) []string {
 			if s == "" {
 				continue
 			}
+
 			if _, ok := seen[s]; ok {
 				continue
 			}
@@ -28,6 +29,7 @@ func PreprocessLangs(ls []string) []string {
 		}
 	}
 
-	sort.Strings(out)
+	slices.Sort(out)
+
 	return out
 }

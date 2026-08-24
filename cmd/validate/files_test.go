@@ -173,162 +173,218 @@ func TestExpandFiles_InvalidGlob(t *testing.T) {
 }
 
 func TestWriteFixedFileIfNeeded_FixNoneDoesNothing(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	finalPath := filepath.Join(dir, "glossary.csv")
 
 	var b strings.Builder
+	colors := newColorizer(true)
 
-	err := writeFixedFileIfNeeded(&b, checks.RunOptions{
-		FixMode: checks.FixNone,
-	}, guard.ValidateResponse{
-		Fixed:     true,
-		FixedData: []byte("fixed"),
-		Summary: guard.Summary{
-			FinalPath: finalPath,
+	err := writeFixedFileIfNeeded(
+		&b,
+		checks.RunOptions{
+			FixMode: checks.FixNone,
 		},
-	})
+		guard.ValidateResponse{
+			Fixed:     true,
+			FixedData: []byte("fixed"),
+			Summary: guard.Summary{
+				FinalPath: finalPath,
+			},
+		},
+		colors,
+	)
 	if err != nil {
-		t.Fatalf("writeFixedFileIfNeeded returned error: %v", err)
+		t.Fatalf("writeFixedFileIfNeeded() error = %v", err)
 	}
 
 	if b.String() != "" {
 		t.Fatalf("output = %q, want empty", b.String())
 	}
 
-	assertFileDoesNotExist(t, filepath.Join(dir, "glossary_fixed.csv"))
+	assertFileDoesNotExist(
+		t,
+		filepath.Join(dir, "glossary_fixed.csv"),
+	)
 }
 
 func TestWriteFixedFileIfNeeded_NotFixedDoesNothing(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	finalPath := filepath.Join(dir, "glossary.csv")
 
 	var b strings.Builder
+	colors := newColorizer(true)
 
-	err := writeFixedFileIfNeeded(&b, checks.RunOptions{
-		FixMode: checks.FixIfNotPass,
-	}, guard.ValidateResponse{
-		Fixed: false,
-		Summary: guard.Summary{
-			FinalPath: finalPath,
+	err := writeFixedFileIfNeeded(
+		&b,
+		checks.RunOptions{
+			FixMode: checks.FixIfNotPass,
 		},
-	})
+		guard.ValidateResponse{
+			Fixed: false,
+			Summary: guard.Summary{
+				FinalPath: finalPath,
+			},
+		},
+		colors,
+	)
 	if err != nil {
-		t.Fatalf("writeFixedFileIfNeeded returned error: %v", err)
+		t.Fatalf("writeFixedFileIfNeeded() error = %v", err)
 	}
 
 	if b.String() != "" {
 		t.Fatalf("output = %q, want empty", b.String())
 	}
 
-	assertFileDoesNotExist(t, filepath.Join(dir, "glossary_fixed.csv"))
+	assertFileDoesNotExist(
+		t,
+		filepath.Join(dir, "glossary_fixed.csv"),
+	)
 }
 
 func TestWriteFixedFileIfNeeded_WritesFixedFile(t *testing.T) {
-	oldNoColor := noColor
-	t.Cleanup(func() {
-		noColor = oldNoColor
-	})
-	noColor = true
+	t.Parallel()
 
 	dir := t.TempDir()
 	finalPath := filepath.Join(dir, "glossary.csv")
 	fixedPath := filepath.Join(dir, "glossary_fixed.csv")
 
 	var b strings.Builder
+	colors := newColorizer(true)
 
-	err := writeFixedFileIfNeeded(&b, checks.RunOptions{
-		FixMode: checks.FixIfNotPass,
-	}, guard.ValidateResponse{
-		Fixed:     true,
-		FixedData: []byte("fixed csv"),
-		Summary: guard.Summary{
-			FinalPath: finalPath,
+	err := writeFixedFileIfNeeded(
+		&b,
+		checks.RunOptions{
+			FixMode: checks.FixIfNotPass,
 		},
-	})
+		guard.ValidateResponse{
+			Fixed:     true,
+			FixedData: []byte("fixed csv"),
+			Summary: guard.Summary{
+				FinalPath: finalPath,
+			},
+		},
+		colors,
+	)
 	if err != nil {
-		t.Fatalf("writeFixedFileIfNeeded returned error: %v", err)
+		t.Fatalf("writeFixedFileIfNeeded() error = %v", err)
 	}
 
 	got, err := os.ReadFile(fixedPath)
 	if err != nil {
-		t.Fatalf("os.ReadFile failed: %v", err)
+		t.Fatalf("ReadFile() error = %v", err)
 	}
 
 	if string(got) != "fixed csv" {
-		t.Fatalf("fixed file content = %q, want %q", string(got), "fixed csv")
+		t.Fatalf(
+			"fixed file content = %q, want %q",
+			got,
+			"fixed csv",
+		)
 	}
 
-	wantOutput := "Info wrote fixed file: " + fixedPath + " (bytes=9)\n"
+	wantOutput := "Info wrote fixed file: " +
+		fixedPath +
+		" (bytes=9)\n"
+
 	if b.String() != wantOutput {
-		t.Fatalf("output = %q, want %q", b.String(), wantOutput)
+		t.Fatalf(
+			"output = %q, want %q",
+			b.String(),
+			wantOutput,
+		)
 	}
 }
 
 func TestWriteFixedFileIfNeeded_AlreadyFixedPathDoesNotDoublePostfix(t *testing.T) {
-	oldNoColor := noColor
-	t.Cleanup(func() {
-		noColor = oldNoColor
-	})
-	noColor = true
+	t.Parallel()
 
 	dir := t.TempDir()
 	finalPath := filepath.Join(dir, "glossary_fixed.csv")
 
 	var b strings.Builder
+	colors := newColorizer(true)
 
-	err := writeFixedFileIfNeeded(&b, checks.RunOptions{
-		FixMode: checks.FixIfNotPass,
-	}, guard.ValidateResponse{
-		Fixed:     true,
-		FixedData: []byte("fixed again"),
-		Summary: guard.Summary{
-			FinalPath: finalPath,
+	err := writeFixedFileIfNeeded(
+		&b,
+		checks.RunOptions{
+			FixMode: checks.FixIfNotPass,
 		},
-	})
+		guard.ValidateResponse{
+			Fixed:     true,
+			FixedData: []byte("fixed again"),
+			Summary: guard.Summary{
+				FinalPath: finalPath,
+			},
+		},
+		colors,
+	)
 	if err != nil {
-		t.Fatalf("writeFixedFileIfNeeded returned error: %v", err)
+		t.Fatalf("writeFixedFileIfNeeded() error = %v", err)
 	}
 
 	got, err := os.ReadFile(finalPath)
 	if err != nil {
-		t.Fatalf("os.ReadFile failed: %v", err)
+		t.Fatalf("ReadFile() error = %v", err)
 	}
 
 	if string(got) != "fixed again" {
-		t.Fatalf("fixed file content = %q, want %q", string(got), "fixed again")
+		t.Fatalf(
+			"fixed file content = %q, want %q",
+			got,
+			"fixed again",
+		)
 	}
 
-	assertFileDoesNotExist(t, filepath.Join(dir, "glossary_fixed_fixed.csv"))
+	assertFileDoesNotExist(
+		t,
+		filepath.Join(dir, "glossary_fixed_fixed.csv"),
+	)
 }
 
 func TestWriteFixedFileIfNeeded_WriteError(t *testing.T) {
-	oldNoColor := noColor
-	t.Cleanup(func() {
-		noColor = oldNoColor
-	})
-	noColor = true
+	t.Parallel()
 
 	dir := t.TempDir()
-	finalPath := filepath.Join(dir, "missing", "glossary.csv")
+	finalPath := filepath.Join(
+		dir,
+		"missing",
+		"glossary.csv",
+	)
 
 	var b strings.Builder
+	colors := newColorizer(true)
 
-	err := writeFixedFileIfNeeded(&b, checks.RunOptions{
-		FixMode: checks.FixIfNotPass,
-	}, guard.ValidateResponse{
-		Fixed:     true,
-		FixedData: []byte("fixed csv"),
-		Summary: guard.Summary{
-			FinalPath: finalPath,
+	err := writeFixedFileIfNeeded(
+		&b,
+		checks.RunOptions{
+			FixMode: checks.FixIfNotPass,
 		},
-	})
+		guard.ValidateResponse{
+			Fixed:     true,
+			FixedData: []byte("fixed csv"),
+			Summary: guard.Summary{
+				FinalPath: finalPath,
+			},
+		},
+		colors,
+	)
 
 	if err == nil {
 		t.Fatal("error = nil, want write error")
 	}
 
-	if !strings.Contains(b.String(), "ERROR writing fixed file:") {
-		t.Fatalf("output = %q, want write error message", b.String())
+	if !strings.Contains(
+		b.String(),
+		"ERROR writing fixed file:",
+	) {
+		t.Fatalf(
+			"output = %q, want write error message",
+			b.String(),
+		)
 	}
 }
 
@@ -350,5 +406,120 @@ func assertFileDoesNotExist(t *testing.T, path string) {
 
 	if !os.IsNotExist(err) {
 		t.Fatalf("os.Stat(%q) error = %v, want not exist", path, err)
+	}
+}
+
+func TestFixedOutputPath_FallbackAndEmpty(t *testing.T) {
+	t.Parallel()
+
+	t.Run("falls back to response path", func(t *testing.T) {
+		t.Parallel()
+
+		resp := guard.ValidateResponse{
+			Path: "foo.csv",
+		}
+
+		got, err := fixedOutputPath(resp)
+		if err != nil {
+			t.Fatalf("fixedOutputPath() error = %v", err)
+		}
+
+		if got != "foo_fixed.csv" {
+			t.Fatalf("fixedOutputPath() = %q, want %q", got, "foo_fixed.csv")
+		}
+	})
+
+	t.Run("returns error when all paths are empty", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := fixedOutputPath(guard.ValidateResponse{})
+		if err == nil {
+			t.Fatal("fixedOutputPath() error = nil, want non-nil")
+		}
+
+		if err.Error() != "fixed output path is empty" {
+			t.Fatalf(
+				"fixedOutputPath() error = %q, want %q",
+				err.Error(),
+				"fixed output path is empty",
+			)
+		}
+	})
+}
+
+func TestWriteFixedFileIfNeeded_EmptyOutputPath(t *testing.T) {
+	t.Parallel()
+
+	var b strings.Builder
+	colors := newColorizer(true)
+
+	resp := guard.ValidateResponse{
+		Fixed: true,
+	}
+
+	err := writeFixedFileIfNeeded(
+		&b,
+		checks.RunOptions{
+			FixMode: checks.FixAlways,
+		},
+		resp,
+		colors,
+	)
+
+	if err == nil {
+		t.Fatal("writeFixedFileIfNeeded() error = nil, want non-nil")
+	}
+
+	if err.Error() != "fixed output path is empty" {
+		t.Fatalf(
+			"writeFixedFileIfNeeded() error = %q, want %q",
+			err.Error(),
+			"fixed output path is empty",
+		)
+	}
+
+	if !strings.Contains(
+		b.String(),
+		"ERROR writing fixed file: fixed output path is empty",
+	) {
+		t.Fatalf(
+			"output = %q, want fixed output path error",
+			b.String(),
+		)
+	}
+}
+
+func TestExpandFilePattern_StatError(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	target := filepath.Join(dir, "missing.csv")
+	link := filepath.Join(dir, "broken.csv")
+
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	_, err := expandFilePattern(
+		filepath.Join(dir, "*.csv"),
+	)
+	if err == nil {
+		t.Fatal("expandFilePattern() error = nil, want stat error")
+	}
+
+	if !strings.Contains(err.Error(), `stat matched file`) {
+		t.Fatalf(
+			"expandFilePattern() error = %q, want stat matched file error",
+			err.Error(),
+		)
+	}
+
+	if !strings.Contains(err.Error(), link) {
+		t.Fatalf(
+			"expandFilePattern() error = %q, want path %q",
+			err.Error(),
+			link,
+		)
 	}
 }

@@ -7,12 +7,11 @@ import (
 )
 
 type commandOptions struct {
-	files       []string
-	langs       []string
-	maxParallel uint
-	jsonOut     bool
-	noColor     bool
-
+	files         []string
+	langs         []string
+	maxParallel   uint
+	jsonOut       bool
+	noColor       bool
 	doFix         bool
 	hardFailOnErr bool
 	rerunAfterFix bool

@@ -32,16 +32,22 @@ Examples:
   # Glob + parallel workers
   glossary-guard validate -f "data/*.csv" --parallel 8
 `,
-		PreRunE: func(cmd *cobra.Command, args []string) error {
+		Args: cobra.NoArgs,
+
+		PreRunE: func(_ *cobra.Command, _ []string) error {
 			return validatePreRun(&opts)
 		},
-		RunE: func(cmd *cobra.Command, args []string) error {
+
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runValidate(cmd.Context(), validateRunConfig{
 				Files:       opts.files,
 				Langs:       opts.langs,
 				MaxParallel: opts.maxParallel,
 				Options:     buildRunOptions(opts),
 				JSONOut:     opts.jsonOut,
+				NoColor:     opts.noColor,
+				Out:         cmd.OutOrStdout(),
+				ErrOut:      cmd.ErrOrStderr(),
 			})
 		},
 	}
@@ -79,33 +85,28 @@ Examples:
 	return cmd
 }
 
-func Init(root *cobra.Command) {
-	root.AddCommand(NewCmd())
-}
-
 func validatePreRun(opts *commandOptions) error {
 	if len(opts.files) == 0 {
-		return fmt.Errorf("no files provided; use --files to specify one or more CSV files")
+		return fmt.Errorf(
+			"no files provided; use --files to specify one or more CSV files",
+		)
 	}
 
 	if !opts.noColor && os.Getenv("NO_COLOR") != "" {
 		opts.noColor = true
 	}
 
-	// Color helpers still read package-level noColor.
-	noColor = opts.noColor
-
 	opts.langs = guard.PreprocessLangs(opts.langs)
 
-	var err error
-	opts.files, err = expandFiles(opts.files)
+	files, err := expandFiles(opts.files)
 	if err != nil {
 		return err
 	}
 
+	opts.files = files
+
 	if len(checks.List()) == 0 {
-		fmt.Fprintln(os.Stderr, red("No checks registered. Nothing to run."))
-		return fmt.Errorf("no checks to run")
+		return fmt.Errorf("no checks registered; nothing to run")
 	}
 
 	return nil

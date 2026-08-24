@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -9,7 +10,12 @@ import (
 
 func generateDocs(rootCmd *cobra.Command, dir string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
+		return fmt.Errorf("create docs directory %q: %w", dir, err)
 	}
-	return doc.GenMarkdownTree(rootCmd, dir)
+
+	if err := doc.GenMarkdownTree(rootCmd, dir); err != nil {
+		return fmt.Errorf("generate Markdown docs in %q: %w", dir, err)
+	}
+
+	return nil
 }

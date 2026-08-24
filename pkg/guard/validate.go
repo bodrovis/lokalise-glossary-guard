@@ -9,23 +9,41 @@ import (
 	"github.com/bodrovis/lokalise-glossary-guard-core/pkg/validator"
 )
 
-func ValidateBytesJSON(ctx context.Context, req ValidateRequest) ([]byte, error) {
+func ValidateBytesJSON(
+	ctx context.Context,
+	req ValidateRequest,
+) ([]byte, error) {
 	resp, err := ValidateBytes(ctx, req)
 
-	if err != nil && errors.Is(err, context.Canceled) {
+	if errors.Is(err, context.Canceled) {
 		return nil, err
 	}
 
+	// Validation errors are included in resp and returned as JSON.
 	return json.Marshal(resp)
 }
 
-func ValidateBytes(ctx context.Context, req ValidateRequest) (ValidateResponse, error) {
+func ValidateBytes(
+	ctx context.Context,
+	req ValidateRequest,
+) (ValidateResponse, error) {
 	opts := runOptions(req)
 	data := requestData(req)
 	langs := PreprocessLangs(req.Langs)
 
-	coreSummary, err := validator.Validate(ctx, req.Path, data, langs, opts)
-	resp := responseFromSummary(req.Path, coreSummary, err)
+	coreSummary, err := validator.Validate(
+		ctx,
+		req.Path,
+		data,
+		langs,
+		opts,
+	)
+
+	resp := responseFromSummary(
+		req.Path,
+		coreSummary,
+		err,
+	)
 
 	return resp, err
 }

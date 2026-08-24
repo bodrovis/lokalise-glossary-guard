@@ -29,7 +29,7 @@ func validateRequestFromArgs(args []js.Value) (guard.ValidateRequest, error) {
 
 	if err := json.Unmarshal([]byte(input), &req); err != nil {
 		return req, fmt.Errorf(
-			"invalid input json: %v; pass an object like {data: csvText} or a JSON string",
+			"invalid input json: %w; pass an object like {data: csvText} or a JSON string",
 			err,
 		)
 	}
@@ -37,7 +37,7 @@ func validateRequestFromArgs(args []js.Value) (guard.ValidateRequest, error) {
 	return req, nil
 }
 
-func inputToJSON(v js.Value) (string, error) {
+func inputToJSON(v js.Value) (out string, err error) {
 	if v.IsUndefined() || v.IsNull() {
 		return "", fmt.Errorf("input must be a JSON string or object")
 	}
@@ -46,7 +46,17 @@ func inputToJSON(v js.Value) (string, error) {
 		return v.String(), nil
 	}
 
-	jsonValue := js.Global().Get("JSON").Call("stringify", v)
+	defer func() {
+		if r := recover(); r != nil {
+			out = ""
+			err = fmt.Errorf("failed to serialize input: %v", r)
+		}
+	}()
+
+	jsonValue := js.Global().
+		Get("JSON").
+		Call("stringify", v)
+
 	if jsonValue.IsUndefined() || jsonValue.IsNull() {
 		return "", fmt.Errorf("input must be a JSON string or object")
 	}

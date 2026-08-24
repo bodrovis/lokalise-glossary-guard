@@ -23,28 +23,43 @@ and Y/N flags catching the most common issues (wrong delimiter, missing term/des
 		SilenceErrors:    true,
 		TraverseChildren: true,
 		Args:             cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},
 	}
 
-	validate.Init(rootCmd)
-
-	rootCmd.AddCommand(&cobra.Command{
-		Use:   "version",
-		Short: "Show version info",
-		Run: func(cmd *cobra.Command, args []string) {
-			cmd.Printf("glossary-guard %s\ncommit: %s\nbuilt at: %s\n", version, commit, date)
-		},
-	})
-
-	rootCmd.AddCommand(&cobra.Command{
-		Use:    "gendocs",
-		Hidden: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return generateDocs(rootCmd, "./docs")
-		},
-	})
+	rootCmd.AddCommand(
+		validate.NewCmd(),
+		newVersionCmd(),
+		newGenDocsCmd(),
+	)
 
 	return rootCmd
+}
+
+func newVersionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Show version info",
+		Args:  cobra.NoArgs,
+		Run: func(cmd *cobra.Command, _ []string) {
+			cmd.Printf(
+				"glossary-guard %s\ncommit: %s\nbuilt at: %s\n",
+				version,
+				commit,
+				date,
+			)
+		},
+	}
+}
+
+func newGenDocsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:    "gendocs",
+		Hidden: true,
+		Args:   cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return generateDocs(cmd.Root(), "./docs")
+		},
+	}
 }

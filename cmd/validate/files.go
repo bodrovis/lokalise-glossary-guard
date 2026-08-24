@@ -12,41 +12,64 @@ import (
 )
 
 func expandFiles(fs []string) ([]string, error) {
-	seen := map[string]struct{}{}
+	seen := make(map[string]struct{})
 	var out []string
 
 	for _, f := range fs {
-		for _, raw := range strings.Split(f, ",") {
+		for raw := range strings.SplitSeq(f, ",") {
 			p := strings.TrimSpace(raw)
 			if p == "" {
 				continue
 			}
-			if hasGlob(p) {
-				matches, err := filepath.Glob(p)
-				if err != nil {
-					return nil, err
-				}
-				for _, m := range matches {
-					info, err := os.Stat(m)
-					if err == nil && !info.IsDir() {
-						if _, ok := seen[m]; !ok {
-							seen[m] = struct{}{}
-							out = append(out, m)
-						}
-					}
-				}
-				continue
+
+			paths, err := expandFilePattern(p)
+			if err != nil {
+				return nil, err
 			}
-			if _, ok := seen[p]; ok {
-				continue
+
+			for _, path := range paths {
+				if _, ok := seen[path]; ok {
+					continue
+				}
+
+				seen[path] = struct{}{}
+				out = append(out, path)
 			}
-			seen[p] = struct{}{}
-			out = append(out, p)
 		}
 	}
+
 	if len(out) == 0 {
 		return nil, fmt.Errorf("no files matched the provided patterns")
 	}
+
+	return out, nil
+}
+
+func expandFilePattern(pattern string) ([]string, error) {
+	if !hasGlob(pattern) {
+		return []string{pattern}, nil
+	}
+
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]string, 0, len(matches))
+
+	for _, match := range matches {
+		info, err := os.Stat(match)
+		if err != nil {
+			return nil, fmt.Errorf("stat matched file %q: %w", match, err)
+		}
+
+		if info.IsDir() {
+			continue
+		}
+
+		out = append(out, match)
+	}
+
 	return out, nil
 }
 
@@ -54,6 +77,7 @@ func writeFixedFileIfNeeded(
 	b *strings.Builder,
 	opts checks.RunOptions,
 	resp guard.ValidateResponse,
+	colors colorizer,
 ) error {
 	if opts.FixMode == checks.FixNone || !resp.Fixed {
 		return nil
@@ -61,16 +85,32 @@ func writeFixedFileIfNeeded(
 
 	outPath, err := fixedOutputPath(resp)
 	if err != nil {
-		fmt.Fprintf(b, "%s writing fixed file: %v\n", red("ERROR"), err)
+		fmt.Fprintf(
+			b,
+			"%s writing fixed file: %v\n",
+			colors.red("ERROR"),
+			err,
+		)
 		return err
 	}
 
 	if err := os.WriteFile(outPath, resp.FixedData, 0o644); err != nil {
-		fmt.Fprintf(b, "%s writing fixed file: %v\n", red("ERROR"), err)
+		fmt.Fprintf(
+			b,
+			"%s writing fixed file: %v\n",
+			colors.red("ERROR"),
+			err,
+		)
 		return err
 	}
 
-	fmt.Fprintf(b, "%s wrote fixed file: %s (bytes=%d)\n", cyan("Info"), outPath, len(resp.FixedData))
+	fmt.Fprintf(
+		b,
+		"%s wrote fixed file: %s (bytes=%d)\n",
+		colors.cyan("Info"),
+		outPath,
+		len(resp.FixedData),
+	)
 	return nil
 }
 

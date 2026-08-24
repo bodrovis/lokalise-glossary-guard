@@ -87,10 +87,6 @@ func TestEncodeEnvelope_Success(t *testing.T) {
 		t.Fatalf("result.passed = %#v, want true", result["passed"])
 	}
 
-	if _, ok := result["FixedData"]; ok {
-		t.Fatalf("FixedData is present, want omitted: %s", raw)
-	}
-
 	if _, ok := result["fixed_data"]; ok {
 		t.Fatalf("fixed_data is present, want omitted: %s", raw)
 	}
@@ -127,5 +123,28 @@ func TestEncodeEnvelope_ResultWithValidationError(t *testing.T) {
 
 	if env.Result.Status != guard.StatusFailed {
 		t.Fatalf("Result.Status = %q, want %q", env.Result.Status, guard.StatusFailed)
+	}
+}
+
+func TestEncodeEnvelope_ZeroOptionalFieldsAreOmitted(t *testing.T) {
+	raw := encodeEnvelope(wasmValidateEnvelope{
+		OK: true,
+	})
+
+	var body map[string]any
+	if err := json.Unmarshal([]byte(raw), &body); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v\nraw: %s", err, raw)
+	}
+
+	if body["ok"] != true {
+		t.Fatalf("ok = %#v, want true", body["ok"])
+	}
+
+	if _, ok := body["result"]; ok {
+		t.Fatalf("result is present, want omitted: %s", raw)
+	}
+
+	if _, ok := body["error"]; ok {
+		t.Fatalf("error is present, want omitted: %s", raw)
 	}
 }
