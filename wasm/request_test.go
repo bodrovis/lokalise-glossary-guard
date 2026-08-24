@@ -300,7 +300,10 @@ func TestValidateGlossaryGuard_CyclicObjectReturnsError(t *testing.T) {
 		t.Fatalf("Result = %#v, want nil", env.Result)
 	}
 
-	if !strings.Contains(env.Error, "failed to serialize input") {
+	if !strings.Contains(
+		env.Error,
+		"failed to serialize input",
+	) {
 		t.Fatalf(
 			"Error = %q, want serialization error",
 			env.Error,

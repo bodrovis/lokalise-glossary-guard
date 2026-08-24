@@ -151,26 +151,6 @@ func TestValidateGlossaryGuard_ReturnsEncodedEnvelope(t *testing.T) {
 	}
 }
 
-func TestValidateGlossaryGuard_RecoversFromPanic(t *testing.T) {
-	obj := js.Global().Get("Object").New()
-	obj.Set("self", obj)
-
-	raw := validateGlossaryGuard(js.Undefined(), []js.Value{obj})
-	env := decodeWASMEnvelope(t, raw)
-
-	if env.OK {
-		t.Fatal("OK = true, want false")
-	}
-
-	if env.Result != nil {
-		t.Fatalf("Result = %#v, want nil", env.Result)
-	}
-
-	if !strings.Contains(env.Error, "wasm panic") {
-		t.Fatalf("Error = %q, want wasm panic error", env.Error)
-	}
-}
-
 func TestValidateGlossaryGuard_ReturnsEncodedErrorEnvelope(t *testing.T) {
 	raw := validateGlossaryGuard(
 		js.Undefined(),
