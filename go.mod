@@ -3,7 +3,7 @@ module github.com/bodrovis/lokalise-glossary-guard
 go 1.27
 
 require (
-	github.com/bodrovis/lokalise-glossary-guard-core v1.2.2
+	github.com/bodrovis/lokalise-glossary-guard-core v1.2.3
 	github.com/spf13/cobra v1.10.2
 )
 
