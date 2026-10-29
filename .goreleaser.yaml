@@ -110,7 +110,8 @@ sboms:
 release:
   draft: false
   prerelease: auto
-  mode: replace
+  preflight:
+    fail_on_error: true
 
 changelog:
   disable: true

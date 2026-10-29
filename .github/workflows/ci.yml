@@ -16,6 +16,19 @@ jobs:
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         persist-credentials: false
+
+    - name: Ensure release does not exist
+      shell: bash
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        set -euo pipefail
+
+        if gh release view "$GITHUB_REF_NAME" \
+          --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          echo "::error::Release $GITHUB_REF_NAME already exists"
+          exit 1
+        fi
         
     - name: Set up Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
