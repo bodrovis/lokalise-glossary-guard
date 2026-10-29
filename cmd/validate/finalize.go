@@ -70,46 +70,53 @@ func (f finalizer) finalizeText(
 	filesCount int,
 	start time.Time,
 ) error {
-	agg := f.printAndAggregate(
-		outcomes,
-		filesCount,
-		start,
-	)
+	agg, err := f.printAndAggregate(outcomes, filesCount, start)
+	if err != nil {
+		return fmt.Errorf("write validation summary: %w", err)
+	}
 
 	return aggregateError(agg)
 }
 
-func (f finalizer) printAndAggregate(
+func (f *finalizer) printAndAggregate(
 	outcomes []fileOutcome,
 	filesCount int,
 	start time.Time,
-) aggregateResult {
+) (aggregateResult, error) {
 	for _, oc := range outcomes {
 		if oc.Output != "" {
-			fmt.Fprint(f.out, oc.Output)
+			if _, err := fmt.Fprint(f.out, oc.Output); err != nil {
+				return aggregateResult{}, err
+			}
 		}
 	}
 
 	agg := aggregateOutcomes(outcomes)
 
 	if filesCount > 1 {
-		fmt.Fprintln(f.out)
+		if _, err := fmt.Fprintln(f.out); err != nil {
+			return agg, err
+		}
 
-		fmt.Fprintf(
+		if _, err := fmt.Fprintf(
 			f.out,
 			"Overall: %s passed, %s warning(s), %s failed, %s error(s)\n",
 			f.colors.green(fmt.Sprint(agg.Passed)),
 			f.colors.yellow(fmt.Sprint(agg.Warns)),
 			f.colors.red(fmt.Sprint(agg.Failed)),
 			f.colors.red(fmt.Sprint(agg.Errored)),
-		)
+		); err != nil {
+			return agg, err
+		}
 	}
 
-	fmt.Fprintf(
+	if _, err := fmt.Fprintf(
 		f.out,
 		"\nTotal time: %v\n",
 		time.Since(start).Round(time.Millisecond),
-	)
+	); err != nil {
+		return agg, err
+	}
 
-	return agg
+	return agg, nil
 }

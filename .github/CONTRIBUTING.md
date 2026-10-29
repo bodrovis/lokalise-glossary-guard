@@ -5,9 +5,10 @@
 3. Implement your feature or bug fix.
 4. Don't forget to add tests and make sure they pass (`go test -shuffle=on -count=1 -race ./...`).
 5. `gofmt -s -w . && gofumpt -w . && go vet ./... && staticcheck ./... && golangci-lint run`.
-6. If necessary, add documentation for your feature or bug fix.
-7. Commit and push your changes.
-8. [Submit a pull request.][pr]
+6. `go run golang.org/x/tools/go/analysis/passes/modernize/cmd/modernize@latest -fix ./....`.
+7. If necessary, add documentation for your feature or bug fix.
+8. Commit and push your changes.
+9. [Submit a pull request.][pr]
 
 [fork]: http://help.github.com/fork-a-repo/
 [branch]: https://help.github.com/en/github/collaborating-with-issues-and-pull-requests/about-branches

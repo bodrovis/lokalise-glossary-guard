@@ -259,7 +259,7 @@ func TestFinalizer_PrintAndAggregateSingleFile(t *testing.T) {
 		colors: newColorizer(true),
 	}
 
-	got := f.printAndAggregate(
+	got, err := f.printAndAggregate(
 		[]fileOutcome{
 			{
 				Path:   "ok.csv",
@@ -273,6 +273,9 @@ func TestFinalizer_PrintAndAggregateSingleFile(t *testing.T) {
 		1,
 		time.Now(),
 	)
+	if err != nil {
+		t.Fatalf("printAndAggregate() error = %v", err)
+	}
 
 	want := aggregateResult{
 		Passed: 1,
@@ -306,7 +309,7 @@ func TestFinalizer_PrintAndAggregateMultipleFiles(t *testing.T) {
 		colors: newColorizer(true),
 	}
 
-	got := f.printAndAggregate(
+	got, err := f.printAndAggregate(
 		[]fileOutcome{
 			{
 				Path:   "ok.csv",
@@ -335,6 +338,9 @@ func TestFinalizer_PrintAndAggregateMultipleFiles(t *testing.T) {
 		3,
 		time.Now(),
 	)
+	if err != nil {
+		t.Fatalf("printAndAggregate() error = %v", err)
+	}
 
 	want := aggregateResult{
 		HadOpErr:   true,
@@ -365,5 +371,33 @@ func TestFinalizer_PrintAndAggregateMultipleFiles(t *testing.T) {
 				want,
 			)
 		}
+	}
+}
+
+func TestFinalizer_PrintAndAggregateWriteError(t *testing.T) {
+	t.Parallel()
+
+	f := finalizer{
+		out:    failingWriter{},
+		colors: newColorizer(true),
+	}
+
+	_, err := f.printAndAggregate(
+		[]fileOutcome{
+			{
+				Output: "file output\n",
+				Passed: 1,
+			},
+		},
+		1,
+		time.Now(),
+	)
+
+	if err == nil {
+		t.Fatal("expected write error, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "write failed") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
